@@ -1,0 +1,10 @@
+{
+  "task_id": "wx_browser_20260305_001",
+  "idempotency_key": "wx_browser_20260305_001_v1",
+  "title": "测试标题（Browser 通道）",
+  "content": "<p>测试正文（Browser 通道）</p>",
+  "review_approved": true,
+  "preferred_channel": "browser",
+  "author": "Agent-Team",
+  "digest": "测试摘要"
+}

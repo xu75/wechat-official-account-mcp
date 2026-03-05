@@ -5,11 +5,12 @@
 1. 配置初始化
 2. 发布前校验
 3. 官方通道发布（assist）
+4. 浏览器通道发布（个人号/无官方发布权限场景）
 
 ## 1. 启动本地 Agent
 
 ```bash
-PORT=4273 node dist/api/server.js
+npm run agent:start
 ```
 
 > 生产建议通过 FRP 暴露 `remote:13001 -> 127.0.0.1:4273`。
@@ -19,21 +20,37 @@ PORT=4273 node dist/api/server.js
 - `WECHAT_AGENT_SIGNING_SECRET`: ECS 与 Agent 共享的 HMAC 密钥（必需）
 - `WECHAT_AGENT_ENABLE_BROWSER_FALLBACK`: `true/false`，Phase B 可先保持 `false`
 - `WECHAT_AGENT_LOG_FILE`: 本地日志文件（默认 `/tmp/wechat-agent.log`）
+- `WECHAT_AGENT_BROWSER_PUBLISH_MODE`: `manual` 或 `command`
+- `WECHAT_AGENT_BROWSER_PUBLISH_CMD`: 当模式是 `command` 时执行的发布命令
+- `WECHAT_AGENT_MANUAL_TASK_DIR`: manual 模式下任务文件输出目录
+
+推荐做法：复制 `.env.agent.example` 为本地 `.env.agent`，后续命令会自动读取，不需要每次手输。
+
+```bash
+cp .env.agent.example .env.agent
+```
 
 ## 3. 通用签名请求脚本
 
 脚本路径：`scripts/agent-request.mjs`
 
 ```bash
-AGENT_BASE_URL=http://127.0.0.1:4273 \
-WECHAT_AGENT_SIGNING_SECRET='replace-with-secret' \
 npm run agent:req -- GET /health
 ```
 
 ```bash
-AGENT_BASE_URL=http://127.0.0.1:4273 \
-WECHAT_AGENT_SIGNING_SECRET='replace-with-secret' \
 npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check.json
+```
+
+也可使用快捷命令：
+
+```bash
+npm run agent:health
+npm run agent:config:init
+npm run agent:config:check
+npm run agent:config:check:browser
+npm run agent:publish:official
+npm run agent:publish:browser
 ```
 
 ## 4. 配置初始化（POST /agent/config/init）
@@ -41,8 +58,6 @@ npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-che
 样例文件：`scripts/agent-templates/config-init.json`
 
 ```bash
-AGENT_BASE_URL=http://127.0.0.1:4273 \
-WECHAT_AGENT_SIGNING_SECRET='replace-with-secret' \
 npm run agent:req -- POST /agent/config/init scripts/agent-templates/config-init.json
 ```
 
@@ -53,8 +68,6 @@ npm run agent:req -- POST /agent/config/init scripts/agent-templates/config-init
 样例文件：`scripts/agent-templates/config-check.json`
 
 ```bash
-AGENT_BASE_URL=http://127.0.0.1:4273 \
-WECHAT_AGENT_SIGNING_SECRET='replace-with-secret' \
 npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check.json
 ```
 
@@ -69,8 +82,6 @@ npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-che
 样例文件：`scripts/agent-templates/publish-official.json`
 
 ```bash
-AGENT_BASE_URL=http://127.0.0.1:4273 \
-WECHAT_AGENT_SIGNING_SECRET='replace-with-secret' \
 npm run agent:req -- POST /publish scripts/agent-templates/publish-official.json
 ```
 
@@ -80,11 +91,32 @@ npm run agent:req -- POST /publish scripts/agent-templates/publish-official.json
 2. 官方通道必须提供 `thumb_media_id`
 3. 同一 `idempotency_key` 重复调用会返回历史结果（`dedup_hit: true`）
 
-## 7. 关键接口汇总
+## 7. 浏览器发布（POST /publish, preferred_channel=browser）
+
+样例文件：`scripts/agent-templates/publish-browser.json`
+
+```bash
+npm run agent:config:check:browser
+npm run agent:publish:browser
+```
+
+`manual` 模式行为：
+
+1. Agent 会在 `WECHAT_AGENT_MANUAL_TASK_DIR` 下生成任务目录
+2. 返回 `publish_failed` + `error_code=BROWSER_MANUAL_REQUIRED`
+3. 任务目录包含 `publish-task.json`、`article-content.html`、`README.txt`
+4. 人工在公众号后台发布后，再通过业务回调流程更新 ECS 状态
+
+`command` 模式行为：
+
+1. Agent 执行 `WECHAT_AGENT_BROWSER_PUBLISH_CMD <payload-json-path>`
+2. 命令需输出 JSON，最少包含 `ok` 字段（`true/false`）
+3. `ok=true` 时 Agent 返回 `accepted(channel=browser)`，可带 `publish_url`
+
+## 8. 关键接口汇总
 
 - `GET /health`
 - `POST /agent/config/init`
 - `POST /agent/config-check`
 - `POST /publish`
 - `POST /callback`
-

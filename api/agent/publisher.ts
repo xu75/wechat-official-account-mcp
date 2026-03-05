@@ -1,6 +1,16 @@
+import { mkdir, writeFile } from 'fs/promises';
+import path from 'path';
+import { spawn } from 'child_process';
 import { writeAgentLog } from './audit-log.js';
 import { PublishRequest, PublishResponse } from './types.js';
 import { getAuthManager, getWechatApiClient, initializeWechatContext } from './wechat-context.js';
+
+type BrowserPublishMode = 'command' | 'manual';
+
+type BrowserPublishResult = {
+  publishUrl?: string;
+  detail: string;
+};
 
 class AgentPublishError extends Error {
   code: string;
@@ -58,18 +68,154 @@ class OfficialPublisher {
   }
 }
 
+function shellQuote(input: string): string {
+  return `'${input.replace(/'/g, `'"'"'`)}'`;
+}
+
+function sanitizeTaskId(input: string): string {
+  return input.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function parseBrowserCommandResult(stdout: string): { ok: boolean; publish_url?: string; message?: string; error_code?: string; error_message?: string } {
+  const raw = stdout.trim();
+  if (!raw) {
+    throw new Error('browser command returned empty stdout');
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const lines = raw.split('\n').map(line => line.trim()).filter(Boolean);
+    const lastLine = lines.at(-1) || '';
+    return JSON.parse(lastLine);
+  }
+}
+
+async function runShellCommand(command: string, timeoutMs: number): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, {
+      shell: true,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on('data', chunk => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', chunk => stderrChunks.push(Buffer.from(chunk)));
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error(`browser command timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on('close', (exitCode) => {
+      clearTimeout(timeout);
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        exitCode,
+      });
+    });
+  });
+}
+
+const browserFallbackEnabled = process.env.WECHAT_AGENT_ENABLE_BROWSER_FALLBACK === 'true';
+const browserPublishCmd = process.env.WECHAT_AGENT_BROWSER_PUBLISH_CMD || '';
+const browserCommandTimeoutMs = Number(process.env.WECHAT_AGENT_BROWSER_COMMAND_TIMEOUT_MS || '180000');
+const browserManualTaskDir = process.env.WECHAT_AGENT_MANUAL_TASK_DIR || '/tmp/wechat-agent-manual-tasks';
+const browserPublishMode = (
+  process.env.WECHAT_AGENT_BROWSER_PUBLISH_MODE
+  || (browserPublishCmd ? 'command' : 'manual')
+).toLowerCase() === 'command' ? 'command' : 'manual';
+
 class BrowserPublisher {
-  async publish(): Promise<never> {
+  async publish(input: PublishRequest): Promise<BrowserPublishResult> {
+    if (browserPublishMode === 'command') {
+      return await this.publishByCommand(input);
+    }
+
+    return await this.publishByManualTask(input);
+  }
+
+  private async publishByCommand(input: PublishRequest): Promise<BrowserPublishResult> {
+    if (!browserPublishCmd.trim()) {
+      throw new AgentPublishError(
+        'BROWSER_CMD_NOT_CONFIGURED',
+        'WECHAT_AGENT_BROWSER_PUBLISH_CMD is required when browser publish mode is command',
+      );
+    }
+
+    await mkdir(browserManualTaskDir, { recursive: true });
+    const safeTaskId = sanitizeTaskId(input.task_id || 'task');
+    const payloadPath = path.join(browserManualTaskDir, `${safeTaskId}-${Date.now()}.browser-payload.json`);
+
+    await writeFile(payloadPath, JSON.stringify(input, null, 2), 'utf8');
+
+    const command = `${browserPublishCmd} ${shellQuote(payloadPath)}`;
+    const { stdout, stderr, exitCode } = await runShellCommand(command, browserCommandTimeoutMs);
+
+    if (exitCode !== 0) {
+      throw new AgentPublishError(
+        'BROWSER_CMD_EXIT_NON_ZERO',
+        `browser publish command failed with exit code ${String(exitCode)}: ${stderr || stdout}`,
+      );
+    }
+
+    const result = parseBrowserCommandResult(stdout);
+    if (!result.ok) {
+      throw new AgentPublishError(
+        result.error_code || 'BROWSER_CMD_REPORTED_FAILURE',
+        result.error_message || result.message || 'browser publish command returned not ok',
+      );
+    }
+
+    return {
+      publishUrl: result.publish_url,
+      detail: `browser command publish succeeded via ${browserPublishCmd}`,
+    };
+  }
+
+  private async publishByManualTask(input: PublishRequest): Promise<BrowserPublishResult> {
+    await mkdir(browserManualTaskDir, { recursive: true });
+
+    const safeTaskId = sanitizeTaskId(input.task_id || 'task');
+    const taskDir = path.join(browserManualTaskDir, `${safeTaskId}-${Date.now()}`);
+    await mkdir(taskDir, { recursive: true });
+
+    const metaPath = path.join(taskDir, 'publish-task.json');
+    const htmlPath = path.join(taskDir, 'article-content.html');
+    const readmePath = path.join(taskDir, 'README.txt');
+
+    await writeFile(metaPath, JSON.stringify(input, null, 2), 'utf8');
+    await writeFile(htmlPath, input.content, 'utf8');
+    await writeFile(readmePath, [
+      'WeChat Browser Publish Manual Task',
+      '',
+      `task_id: ${input.task_id}`,
+      `idempotency_key: ${input.idempotency_key}`,
+      '',
+      '1) Open mp.weixin.qq.com and create a new article',
+      `2) Title: ${input.title}`,
+      `3) Content file: ${htmlPath}`,
+      '4) Publish manually, then report publish_url via ECS callback flow',
+    ].join('\n'), 'utf8');
+
     throw new AgentPublishError(
-      'BROWSER_NOT_IMPLEMENTED',
-      'browser fallback adapter is not implemented in Phase A',
+      'BROWSER_MANUAL_REQUIRED',
+      `browser manual publish task generated at ${taskDir}`,
     );
   }
 }
 
 const officialPublisher = new OfficialPublisher();
 const browserPublisher = new BrowserPublisher();
-const browserFallbackEnabled = process.env.WECHAT_AGENT_ENABLE_BROWSER_FALLBACK === 'true';
 
 function normalizeError(error: unknown): { code: string; message: string } {
   if (error instanceof AgentPublishError) {
@@ -81,7 +227,7 @@ function normalizeError(error: unknown): { code: string; message: string } {
 
   if (error instanceof Error) {
     return {
-      code: 'OFFICIAL_PUBLISH_FAILED',
+      code: 'PUBLISH_FAILED',
       message: error.message,
     };
   }
@@ -90,6 +236,54 @@ function normalizeError(error: unknown): { code: string; message: string } {
     code: 'UNKNOWN_ERROR',
     message: 'unknown publish error',
   };
+}
+
+async function runBrowserPublish(input: PublishRequest, startedAt: number, reason: string): Promise<PublishResponse> {
+  try {
+    const browserResult = await browserPublisher.publish(input);
+
+    const response: PublishResponse = {
+      task_id: input.task_id,
+      idempotency_key: input.idempotency_key,
+      status: 'accepted',
+      channel: 'browser',
+      dedup_hit: false,
+      publish_url: browserResult.publishUrl,
+      duration_ms: Date.now() - startedAt,
+    };
+
+    await writeAgentLog('publish_browser_success', {
+      task_id: input.task_id,
+      channel: 'browser',
+      reason,
+      detail: browserResult.detail,
+      publish_url: browserResult.publishUrl || '',
+      duration_ms: response.duration_ms,
+    });
+
+    return response;
+  } catch (browserError) {
+    const browserErr = normalizeError(browserError);
+
+    await writeAgentLog('publish_browser_failed', {
+      task_id: input.task_id,
+      channel: 'browser',
+      reason,
+      error_code: browserErr.code,
+      error_message: browserErr.message,
+    });
+
+    return {
+      task_id: input.task_id,
+      idempotency_key: input.idempotency_key,
+      status: 'publish_failed',
+      channel: 'browser',
+      dedup_hit: false,
+      error_code: browserErr.code,
+      error_message: browserErr.message,
+      duration_ms: Date.now() - startedAt,
+    };
+  }
 }
 
 export async function publishArticle(input: PublishRequest): Promise<PublishResponse> {
@@ -102,12 +296,17 @@ export async function publishArticle(input: PublishRequest): Promise<PublishResp
       task_id: input.task_id,
       idempotency_key: input.idempotency_key,
       status: 'publish_failed',
-      channel: 'official',
+      channel: input.preferred_channel || 'official',
       dedup_hit: false,
       error_code: 'REVIEW_NOT_APPROVED',
       error_message: 'review_approved must be true in assist mode',
       duration_ms: Date.now() - startedAt,
     };
+  }
+
+  const preferredChannel = input.preferred_channel || 'official';
+  if (preferredChannel === 'browser') {
+    return await runBrowserPublish(input, startedAt, 'preferred_browser');
   }
 
   try {
@@ -142,7 +341,7 @@ export async function publishArticle(input: PublishRequest): Promise<PublishResp
       error_message: officialErr.message,
     });
 
-    if (!browserFallbackEnabled || input.preferred_channel === 'browser') {
+    if (!browserFallbackEnabled) {
       return {
         task_id: input.task_id,
         idempotency_key: input.idempotency_key,
@@ -155,39 +354,22 @@ export async function publishArticle(input: PublishRequest): Promise<PublishResp
       };
     }
 
-    try {
-      await browserPublisher.publish();
-      return {
-        task_id: input.task_id,
-        idempotency_key: input.idempotency_key,
-        status: 'accepted',
-        channel: 'browser',
-        dedup_hit: false,
-        duration_ms: Date.now() - startedAt,
-      };
-    } catch (browserError) {
-      const browserErr = normalizeError(browserError);
-      await writeAgentLog('publish_browser_failed', {
-        task_id: input.task_id,
-        channel: 'browser',
-        error_code: browserErr.code,
-        error_message: browserErr.message,
-      });
-
-      return {
-        task_id: input.task_id,
-        idempotency_key: input.idempotency_key,
-        status: 'publish_failed',
-        channel: 'browser',
-        dedup_hit: false,
-        error_code: browserErr.code,
-        error_message: browserErr.message,
-        duration_ms: Date.now() - startedAt,
-      };
-    }
+    return await runBrowserPublish(input, startedAt, 'official_failed');
   }
 }
 
 export function isBrowserFallbackEnabled(): boolean {
   return browserFallbackEnabled;
+}
+
+export function getBrowserPublishMode(): BrowserPublishMode {
+  return browserPublishMode;
+}
+
+export function isBrowserCommandConfigured(): boolean {
+  return Boolean(browserPublishCmd.trim());
+}
+
+export function getBrowserManualTaskDir(): string {
+  return browserManualTaskDir;
 }

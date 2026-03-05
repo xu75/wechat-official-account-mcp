@@ -1,6 +1,7 @@
 import { WechatConfig } from '../../src/mcp-tool/types.js';
 import { getAuthManager, initializeWechatContext } from './wechat-context.js';
 import { AgentConfigCheckRequest, AgentConfigInitRequest } from './types.js';
+import { getBrowserPublishMode, isBrowserCommandConfigured } from './publisher.js';
 
 function mask(value: string): string {
   if (value.length <= 8) {
@@ -46,6 +47,7 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
   publish_check: {
     ok: boolean;
     errors: string[];
+    warnings: string[];
   };
 }> {
   await initializeWechatContext();
@@ -79,6 +81,7 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
   }
 
   const publishErrors: string[] = [];
+  const publishWarnings: string[] = [];
   const preview = input.publish_preview;
   if (preview) {
     if (!preview.review_approved) {
@@ -89,6 +92,16 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
     if (channel === 'official' && !preview.thumb_media_id) {
       publishErrors.push('thumb_media_id is required for official channel');
     }
+
+    if (channel === 'browser') {
+      const mode = getBrowserPublishMode();
+      if (mode === 'command' && !isBrowserCommandConfigured()) {
+        publishErrors.push('WECHAT_AGENT_BROWSER_PUBLISH_CMD is required when browser publish mode is command');
+      }
+      if (mode === 'manual') {
+        publishWarnings.push('browser publish is in manual mode; request will generate local task files for manual intervention');
+      }
+    }
   }
 
   return {
@@ -98,6 +111,7 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
     publish_check: {
       ok: publishErrors.length === 0,
       errors: publishErrors,
+      warnings: publishWarnings,
     },
   };
 }

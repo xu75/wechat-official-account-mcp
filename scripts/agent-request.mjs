@@ -1,10 +1,34 @@
 #!/usr/bin/env node
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
+function loadEnvConfig() {
+  const candidates = [];
+
+  if (process.env.AGENT_ENV_FILE) {
+    candidates.push(process.env.AGENT_ENV_FILE);
+  }
+
+  candidates.push('.env.agent', '.env.local', '.env');
+
+  for (const candidate of candidates) {
+    const resolved = path.resolve(process.cwd(), candidate);
+    if (!fs.existsSync(resolved)) {
+      continue;
+    }
+    if (!fs.statSync(resolved).isFile()) {
+      continue;
+    }
+    dotenv.config({ path: resolved, override: false, quiet: true });
+  }
+}
+
 function usage() {
-  console.error('Usage: WECHAT_AGENT_SIGNING_SECRET=... node scripts/agent-request.mjs <METHOD> <PATH> [BODY_JSON_OR_FILE]');
+  console.error('Usage: node scripts/agent-request.mjs <METHOD> <PATH> [BODY_JSON_OR_FILE]');
+  console.error('Env files (auto load): .env.agent -> .env.local -> .env');
+  console.error('Optional: AGENT_ENV_FILE=/path/to/file');
   console.error('Example:');
   console.error('  node scripts/agent-request.mjs GET /health');
   console.error('  node scripts/agent-request.mjs POST /agent/config-check scripts/agent-templates/config-check.json');
@@ -32,6 +56,8 @@ function loadBody(raw) {
 }
 
 async function main() {
+  loadEnvConfig();
+
   const method = (process.argv[2] || '').toUpperCase();
   const requestPath = process.argv[3] || '';
   const rawBodyArg = process.argv[4] || '';

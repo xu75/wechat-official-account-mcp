@@ -48,7 +48,14 @@
     "start": "node dist/src/cli.js",
     "postbuild": "chmod +x dist/src/cli.js",
     "build:full": "./scripts/build.sh",
-    "agent:req": "node scripts/agent-request.mjs"
+    "agent:start": "node --env-file=.env.agent dist/api/server.js",
+    "agent:req": "node scripts/agent-request.mjs",
+    "agent:health": "npm run agent:req -- GET /health",
+    "agent:config:init": "npm run agent:req -- POST /agent/config/init scripts/agent-templates/config-init.json",
+    "agent:config:check": "npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check.json",
+    "agent:config:check:browser": "npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check-browser.json",
+    "agent:publish:official": "npm run agent:req -- POST /publish scripts/agent-templates/publish-official.json",
+    "agent:publish:browser": "npm run agent:req -- POST /publish scripts/agent-templates/publish-browser.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

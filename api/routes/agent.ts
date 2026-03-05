@@ -12,7 +12,13 @@ import {
 } from '../agent/schemas.js';
 import { getAgentLogPath, writeAgentLog } from '../agent/audit-log.js';
 import { getIdempotencyTtlMs, getIdempotentResult, saveIdempotentResult } from '../agent/idempotency-store.js';
-import { isBrowserFallbackEnabled, publishArticle } from '../agent/publisher.js';
+import {
+  getBrowserManualTaskDir,
+  getBrowserPublishMode,
+  isBrowserCommandConfigured,
+  isBrowserFallbackEnabled,
+  publishArticle,
+} from '../agent/publisher.js';
 import { getLastPublishSummary, updateLastPublishSummary } from '../agent/state.js';
 import { getReplayWindowSeconds, verifyAgentSignature } from '../agent/signature.js';
 import { type AgentConfigCheckRequest, type AgentConfigInitRequest, type PublishRequest } from '../agent/types.js';
@@ -29,6 +35,9 @@ router.get('/health', (_req: Request, res: Response) => {
     mode: AGENT_MODE,
     version: AGENT_VERSION,
     browser_fallback_enabled: isBrowserFallbackEnabled(),
+    browser_publish_mode: getBrowserPublishMode(),
+    browser_command_configured: isBrowserCommandConfigured(),
+    browser_manual_task_dir: getBrowserManualTaskDir(),
     replay_window_seconds: getReplayWindowSeconds(),
     idempotency_ttl_ms: getIdempotencyTtlMs(),
     log_file: getAgentLogPath(),
