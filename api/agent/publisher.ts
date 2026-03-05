@@ -1,7 +1,6 @@
-import { AuthManager } from '../../src/auth/auth-manager.js';
-import { WechatApiClient } from '../../src/wechat/api-client.js';
 import { writeAgentLog } from './audit-log.js';
 import { PublishRequest, PublishResponse } from './types.js';
+import { getAuthManager, getWechatApiClient, initializeWechatContext } from './wechat-context.js';
 
 class AgentPublishError extends Error {
   code: string;
@@ -13,17 +12,8 @@ class AgentPublishError extends Error {
 }
 
 class OfficialPublisher {
-  private authManager = new AuthManager();
-  private apiClient = new WechatApiClient(this.authManager);
-  private initialized = false;
-
   async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    await this.authManager.initialize();
-    this.initialized = true;
+    await initializeWechatContext();
   }
 
   async publish(input: PublishRequest): Promise<{ publishId: string; draftMediaId: string }> {
@@ -34,14 +24,14 @@ class OfficialPublisher {
       );
     }
 
-    if (!this.authManager.isConfigured()) {
+    if (!getAuthManager().isConfigured()) {
       throw new AgentPublishError(
         'OFFICIAL_NOT_CONFIGURED',
         'wechat app credentials are not configured in local storage',
       );
     }
 
-    const draft = await this.apiClient.post('/cgi-bin/draft/add', {
+    const draft = await getWechatApiClient().post('/cgi-bin/draft/add', {
       articles: [
         {
           title: input.title,
@@ -57,7 +47,7 @@ class OfficialPublisher {
       ],
     }) as { media_id: string };
 
-    const submit = await this.apiClient.post('/cgi-bin/freepublish/submit', {
+    const submit = await getWechatApiClient().post('/cgi-bin/freepublish/submit', {
       media_id: draft.media_id,
     }) as { publish_id: string };
 

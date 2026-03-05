@@ -18,6 +18,7 @@
 - **[功能总览 (FEATURES_OVERVIEW.md)](./FEATURES_OVERVIEW.md)** - v2.0.0 完整功能介绍、对比表格和使用场景
 - **[更新日志 (CHANGELOG.md)](./CHANGELOG.md)** - 版本历史和详细更新内容
 - **[开发者指南 (CLAUDE.md)](./CLAUDE.md)** - 架构说明、开发规范、常见模式
+- **[Agent Phase B 联调指南 (docs/AGENT_PHASE_B.md)](./docs/AGENT_PHASE_B.md)** - `config/init`、`config-check`、`publish` 联调脚本与模板
 
 ### 外部资源
 - [微信公众平台官方文档](https://developers.weixin.qq.com/doc/)

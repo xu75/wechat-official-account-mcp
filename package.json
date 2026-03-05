@@ -47,7 +47,8 @@
     "pack:dry": "npm pack --dry-run",
     "start": "node dist/src/cli.js",
     "postbuild": "chmod +x dist/src/cli.js",
-    "build:full": "./scripts/build.sh"
+    "build:full": "./scripts/build.sh",
+    "agent:req": "node scripts/agent-request.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

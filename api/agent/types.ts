@@ -34,6 +34,26 @@ export interface CallbackRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface AgentConfigInitRequest {
+  app_id: string;
+  app_secret: string;
+  token?: string;
+  encoding_aes_key?: string;
+}
+
+export interface AgentConfigCheckRequest {
+  check_token?: boolean;
+  publish_preview?: {
+    task_id: string;
+    idempotency_key: string;
+    title: string;
+    content: string;
+    review_approved: boolean;
+    preferred_channel?: PublishChannel;
+    thumb_media_id?: string;
+  };
+}
+
 export interface LastPublishSummary {
   task_id: string;
   status: PublishResponse['status'];

@@ -20,5 +20,27 @@ export const callbackRequestSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+export const configInitRequestSchema = z.object({
+  app_id: z.string().min(1),
+  app_secret: z.string().min(1),
+  token: z.string().optional(),
+  encoding_aes_key: z.string().optional(),
+});
+
+export const configCheckRequestSchema = z.object({
+  check_token: z.boolean().optional().default(true),
+  publish_preview: publishRequestSchema.pick({
+    task_id: true,
+    idempotency_key: true,
+    title: true,
+    content: true,
+    review_approved: true,
+    preferred_channel: true,
+    thumb_media_id: true,
+  }).optional(),
+});
+
 export type PublishRequestInput = z.infer<typeof publishRequestSchema>;
 export type CallbackRequestInput = z.infer<typeof callbackRequestSchema>;
+export type ConfigInitRequestInput = z.infer<typeof configInitRequestSchema>;
+export type ConfigCheckRequestInput = z.infer<typeof configCheckRequestSchema>;
