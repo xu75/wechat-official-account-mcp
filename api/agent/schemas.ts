@@ -6,6 +6,7 @@ export const publishRequestSchema = z.object({
   title: z.string().min(1),
   content: z.string().min(1),
   review_approved: z.boolean(),
+  review_approval_token: z.string().min(1).optional(),
   preferred_channel: z.enum(['official', 'browser']).optional().default('official'),
   thumb_media_id: z.string().min(1).optional(),
   author: z.string().optional(),
@@ -35,8 +36,12 @@ export const configCheckRequestSchema = z.object({
     title: true,
     content: true,
     review_approved: true,
+    review_approval_token: true,
     preferred_channel: true,
     thumb_media_id: true,
+    author: true,
+    digest: true,
+    content_source_url: true,
   }).optional(),
 });
 

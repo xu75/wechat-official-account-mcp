@@ -36,6 +36,7 @@ npm run agent:health
 
 ```bash
 npm run agent:config:check:browser
+npm run agent:review:token -- scripts/agent-templates/publish-browser.json --write --timestamp-title
 npm run agent:publish:browser
 ```
 

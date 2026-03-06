@@ -1,24 +1,8 @@
 #!/usr/bin/env node
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-
-function loadEnvConfig() {
-  const candidates = [];
-  if (process.env.AGENT_ENV_FILE) {
-    candidates.push(process.env.AGENT_ENV_FILE);
-  }
-  candidates.push('.env.agent', '.env.local', '.env');
-
-  for (const candidate of candidates) {
-    const resolved = path.resolve(process.cwd(), candidate);
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-      continue;
-    }
-    dotenv.config({ path: resolved, override: false, quiet: true });
-  }
-}
+import { appendTimestampToTitle, loadEnvConfig, signReviewApprovalToken } from './review-token-utils.mjs';
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -103,15 +87,21 @@ function readJson(filePath) {
 }
 
 function buildPayload(template, channel, keepKeys) {
+  const titleWithTimestamp = appendTimestampToTitle(template.title || `E2E ${channel} test`);
+  const basePayload = {
+    ...template,
+    title: titleWithTimestamp,
+  };
+
   if (keepKeys) {
-    return template;
+    return basePayload;
   }
 
   const suffix = Date.now();
   return {
-    ...template,
-    task_id: `${template.task_id || `wx_${channel}`}_${suffix}`,
-    idempotency_key: `${template.idempotency_key || `idem_${channel}`}_${suffix}`,
+    ...basePayload,
+    task_id: `${basePayload.task_id || `wx_${channel}`}_${suffix}`,
+    idempotency_key: `${basePayload.idempotency_key || `idem_${channel}`}_${suffix}`,
   };
 }
 
@@ -129,12 +119,29 @@ async function main() {
     ? 'scripts/agent-templates/publish-browser.json'
     : 'scripts/agent-templates/publish-official.json';
 
-  const health = await requestJson(baseUrl, secret, 'GET', '/health');
-  const configCheckPayload = readJson(configCheckTemplate);
-  const configCheck = await requestJson(baseUrl, secret, 'POST', '/agent/config-check', configCheckPayload);
-
   const publishPayloadTemplate = readJson(publishTemplate);
   const publishPayload = buildPayload(publishPayloadTemplate, channel, keepKeys);
+  publishPayload.review_approved = true;
+  publishPayload.review_approval_token = signReviewApprovalToken(publishPayload, { reviewer: 'e2e-runner' });
+
+  const health = await requestJson(baseUrl, secret, 'GET', '/health');
+  const configCheckPayload = readJson(configCheckTemplate);
+  if (configCheckPayload.publish_preview) {
+    configCheckPayload.publish_preview = {
+      task_id: publishPayload.task_id,
+      idempotency_key: publishPayload.idempotency_key,
+      title: publishPayload.title,
+      content: publishPayload.content,
+      review_approved: publishPayload.review_approved,
+      review_approval_token: publishPayload.review_approval_token,
+      preferred_channel: publishPayload.preferred_channel,
+      thumb_media_id: publishPayload.thumb_media_id,
+      author: publishPayload.author,
+      digest: publishPayload.digest,
+      content_source_url: publishPayload.content_source_url,
+    };
+  }
+  const configCheck = await requestJson(baseUrl, secret, 'POST', '/agent/config-check', configCheckPayload);
   const publish = await requestJson(baseUrl, secret, 'POST', '/publish', publishPayload);
 
   const summary = {

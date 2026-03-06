@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import { writeAgentLog } from './audit-log.js';
 import { PublishRequest, PublishResponse } from './types.js';
 import { getAuthManager, getWechatApiClient, initializeWechatContext } from './wechat-context.js';
+import { verifyReviewApproval } from './review-approval.js';
 
 type BrowserPublishMode = 'command' | 'manual';
 
@@ -291,15 +292,22 @@ export async function publishArticle(input: PublishRequest): Promise<PublishResp
 
   await officialPublisher.initialize();
 
-  if (!input.review_approved) {
+  const reviewCheck = verifyReviewApproval(input);
+  if (!reviewCheck.ok) {
+    await writeAgentLog('publish_review_rejected', {
+      task_id: input.task_id,
+      error_code: reviewCheck.error_code || 'REVIEW_REJECTED',
+      error_message: reviewCheck.error_message || 'review check failed',
+    });
+
     return {
       task_id: input.task_id,
       idempotency_key: input.idempotency_key,
       status: 'publish_failed',
       channel: input.preferred_channel || 'official',
       dedup_hit: false,
-      error_code: 'REVIEW_NOT_APPROVED',
-      error_message: 'review_approved must be true in assist mode',
+      error_code: reviewCheck.error_code || 'REVIEW_REJECTED',
+      error_message: reviewCheck.error_message || 'review check failed',
       duration_ms: Date.now() - startedAt,
     };
   }

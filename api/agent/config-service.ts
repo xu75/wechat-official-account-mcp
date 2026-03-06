@@ -1,7 +1,8 @@
 import { WechatConfig } from '../../src/mcp-tool/types.js';
 import { getAuthManager, initializeWechatContext } from './wechat-context.js';
-import { AgentConfigCheckRequest, AgentConfigInitRequest } from './types.js';
+import { AgentConfigCheckRequest, AgentConfigInitRequest, PublishRequest } from './types.js';
 import { getBrowserPublishMode, isBrowserCommandConfigured } from './publisher.js';
+import { getReviewApprovalPolicy, verifyReviewApproval } from './review-approval.js';
 
 function mask(value: string): string {
   if (value.length <= 8) {
@@ -38,6 +39,12 @@ export async function initializeAgentConfig(input: AgentConfigInitRequest): Prom
 export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<{
   configured: boolean;
   app_id?: string;
+  review_check: {
+    required: boolean;
+    secret_configured: boolean;
+    issuer: string;
+    ttl_seconds: number;
+  };
   token_check: {
     enabled: boolean;
     ok: boolean;
@@ -82,6 +89,7 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
 
   const publishErrors: string[] = [];
   const publishWarnings: string[] = [];
+  const reviewPolicy = getReviewApprovalPolicy();
   const preview = input.publish_preview;
   if (preview) {
     if (!preview.review_approved) {
@@ -102,11 +110,21 @@ export async function checkAgentConfig(input: AgentConfigCheckRequest): Promise<
         publishWarnings.push('browser publish is in manual mode; request will generate local task files for manual intervention');
       }
     }
+
+    const reviewCheck = verifyReviewApproval(preview as PublishRequest);
+    if (!reviewCheck.ok) {
+      publishErrors.push(`${reviewCheck.error_code}: ${reviewCheck.error_message}`);
+    }
+  }
+
+  if (reviewPolicy.required && !reviewPolicy.secret_configured) {
+    publishErrors.push('REVIEW_TOKEN_SECRET_NOT_CONFIGURED: configure WECHAT_AGENT_REVIEW_TOKEN_SECRET or WECHAT_AGENT_SIGNING_SECRET');
   }
 
   return {
     configured,
     app_id: config?.appId ? mask(config.appId) : undefined,
+    review_check: reviewPolicy,
     token_check: tokenCheck,
     publish_check: {
       ok: publishErrors.length === 0,

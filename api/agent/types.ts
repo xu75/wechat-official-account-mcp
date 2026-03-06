@@ -6,6 +6,7 @@ export interface PublishRequest {
   title: string;
   content: string;
   review_approved: boolean;
+  review_approval_token?: string;
   preferred_channel?: PublishChannel;
   thumb_media_id?: string;
   author?: string;
@@ -49,8 +50,12 @@ export interface AgentConfigCheckRequest {
     title: string;
     content: string;
     review_approved: boolean;
+    review_approval_token?: string;
     preferred_channel?: PublishChannel;
     thumb_media_id?: string;
+    author?: string;
+    digest?: string;
+    content_source_url?: string;
   };
 }
 

@@ -18,6 +18,10 @@ npm run agent:start
 ## 2. 环境变量
 
 - `WECHAT_AGENT_SIGNING_SECRET`: ECS 与 Agent 共享的 HMAC 密钥（必需）
+- `WECHAT_AGENT_REQUIRE_REVIEW_TOKEN`: 是否强制校验审核令牌（默认 `true`）
+- `WECHAT_AGENT_REVIEW_TOKEN_SECRET`: 审核令牌密钥（为空时回退到 `WECHAT_AGENT_SIGNING_SECRET`）
+- `WECHAT_AGENT_REVIEW_TOKEN_ISSUER`: 审核令牌发行方（默认 `ecs-review`）
+- `WECHAT_AGENT_REVIEW_TOKEN_TTL_SECONDS`: 审核令牌有效期（默认 `600` 秒）
 - `WECHAT_AGENT_ENABLE_BROWSER_FALLBACK`: `true/false`，Phase B 可先保持 `false`
 - `WECHAT_AGENT_LOG_FILE`: 本地日志文件（默认 `/tmp/wechat-agent.log`）
 - `WECHAT_AGENT_BROWSER_PUBLISH_MODE`: `manual` 或 `command`
@@ -53,6 +57,7 @@ npm run agent:publish:official
 npm run agent:publish:browser
 npm run agent:e2e:browser
 npm run agent:e2e:official
+npm run agent:review:token -- scripts/agent-templates/publish-browser.json --write --timestamp-title
 ```
 
 ## 4. 配置初始化（POST /agent/config/init）
@@ -121,7 +126,23 @@ npm run agent:publish:browser
 
 用于打通链路（不真实发文）。
 
-## 8. 关键接口汇总
+## 8. 审核令牌（新增）
+
+`/publish` 现在会校验 `review_approval_token` 与请求内容哈希一致（默认强制开启）。
+
+本地生成测试 token：
+
+```bash
+npm run agent:review:token -- scripts/agent-templates/publish-browser.json --write --timestamp-title
+```
+
+然后再执行：
+
+```bash
+npm run agent:publish:browser
+```
+
+## 9. 关键接口汇总
 
 - `GET /health`
 - `POST /agent/config/init`

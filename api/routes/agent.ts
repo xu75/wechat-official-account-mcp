@@ -23,6 +23,7 @@ import { getLastPublishSummary, updateLastPublishSummary } from '../agent/state.
 import { getReplayWindowSeconds, verifyAgentSignature } from '../agent/signature.js';
 import { type AgentConfigCheckRequest, type AgentConfigInitRequest, type PublishRequest } from '../agent/types.js';
 import { checkAgentConfig, initializeAgentConfig } from '../agent/config-service.js';
+import { getReviewApprovalPolicy } from '../agent/review-approval.js';
 
 const router = Router();
 const AGENT_MODE = 'assist';
@@ -38,6 +39,7 @@ router.get('/health', (_req: Request, res: Response) => {
     browser_publish_mode: getBrowserPublishMode(),
     browser_command_configured: isBrowserCommandConfigured(),
     browser_manual_task_dir: getBrowserManualTaskDir(),
+    review_check: getReviewApprovalPolicy(),
     replay_window_seconds: getReplayWindowSeconds(),
     idempotency_ttl_ms: getIdempotencyTtlMs(),
     log_file: getAgentLogPath(),
