@@ -51,6 +51,17 @@ npm run agent:publish:browser
 1. 将 `.env.agent` 切到 command 模式
 2. 配置 `WECHAT_AGENT_BROWSER_PUBLISH_CMD`
 3. 发布命令实现标准 JSON 输出
+4. 首次扫码登录后复用本地浏览器 profile
+
+推荐命令：
+
+`scripts/browser-publisher/playwright-wechat-publish.mjs`
+
+推荐参数：
+
+1. `WECHAT_BROWSER_SUBMIT_MODE=draft`（先验证自动化流程）
+2. `WECHAT_BROWSER_HEADLESS=false`
+3. `WECHAT_BROWSER_USER_DATA_DIR=~/.wechat-agent/browser-profile`
 
 要求输出：
 

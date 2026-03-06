@@ -120,11 +120,28 @@ npm run agent:publish:browser
 2. 命令需输出 JSON，最少包含 `ok` 字段（`true/false`）
 3. `ok=true` 时 Agent 返回 `accepted(channel=browser)`，可带 `publish_url`
 
-仓库内提供了联调用 mock 命令：
+仓库内提供了真实自动发布命令（Playwright）：
+
+`scripts/browser-publisher/playwright-wechat-publish.mjs`
+
+前置：
+
+1. `npm install -D playwright`
+2. `WECHAT_AGENT_BROWSER_PUBLISH_CMD` 指向上面的脚本
+3. 首次会打开公众号后台，扫码登录；登录态保存在 `WECHAT_BROWSER_USER_DATA_DIR`
+
+建议先设置：
+
+1. `WECHAT_BROWSER_SUBMIT_MODE=draft`
+2. `WECHAT_BROWSER_HEADLESS=false`
+
+确认稳定后再切到 `WECHAT_BROWSER_SUBMIT_MODE=publish`。
+
+仓库也保留了 mock 命令：
 
 `scripts/browser-publisher/mock-success.mjs`
 
-用于打通链路（不真实发文）。
+用于打通链路（不真实发文），便于回归测试。
 
 ## 8. 审核令牌（新增）
 

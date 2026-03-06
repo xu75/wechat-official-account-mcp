@@ -26,14 +26,32 @@
 {"ok": false, "error_code": "BROWSER_PUBLISH_FAILED", "error_message": "..."}
 ```
 
-## 示例命令（本仓库）
+## 真实自动发布命令（本仓库）
+
+```bash
+node /Users/xujinsong/VSCode/SynologyDrive/wechat-official-account-mcp/scripts/browser-publisher/playwright-wechat-publish.mjs
+```
+
+前置：
+
+1. 安装 Playwright：`npm install -D playwright`
+2. 确保本机有 Chrome（默认 `WECHAT_BROWSER_CHANNEL=chrome`）
+3. 首次运行会打开公众号后台，扫码登录后登录态会持久化在 `WECHAT_BROWSER_USER_DATA_DIR`
+
+关键环境变量：
+
+1. `WECHAT_BROWSER_SUBMIT_MODE=draft|publish`（推荐先 `draft`）
+2. `WECHAT_BROWSER_HEADLESS=false`（推荐先可视化）
+3. `WECHAT_BROWSER_USER_DATA_DIR=~/.wechat-agent/browser-profile`
+4. `WECHAT_BROWSER_DEBUG_DIR=/tmp/wechat-agent-browser-debug`
+5. `WECHAT_BROWSER_DRY_RUN=true`（仅联调时跳过浏览器操作）
+
+## mock 命令（仅联调）
 
 ```bash
 node /Users/xujinsong/VSCode/SynologyDrive/wechat-official-account-mcp/scripts/browser-publisher/mock-success.mjs
 ```
 
-这个示例仅用于联调，不会真实发文。可通过环境变量强制失败：
+这个示例不会真实发文，可通过环境变量强制失败：
 
-```bash
-MOCK_BROWSER_PUBLISH_FORCE_FAIL=true
-```
+`MOCK_BROWSER_PUBLISH_FORCE_FAIL=true`
