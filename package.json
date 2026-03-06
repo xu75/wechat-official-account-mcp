@@ -55,7 +55,9 @@
     "agent:config:check": "npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check.json",
     "agent:config:check:browser": "npm run agent:req -- POST /agent/config-check scripts/agent-templates/config-check-browser.json",
     "agent:publish:official": "npm run agent:req -- POST /publish scripts/agent-templates/publish-official.json",
-    "agent:publish:browser": "npm run agent:req -- POST /publish scripts/agent-templates/publish-browser.json"
+    "agent:publish:browser": "npm run agent:req -- POST /publish scripts/agent-templates/publish-browser.json",
+    "agent:e2e:browser": "node scripts/agent-e2e.mjs --channel browser",
+    "agent:e2e:official": "node scripts/agent-e2e.mjs --channel official"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

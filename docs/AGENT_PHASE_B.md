@@ -51,6 +51,8 @@ npm run agent:config:check
 npm run agent:config:check:browser
 npm run agent:publish:official
 npm run agent:publish:browser
+npm run agent:e2e:browser
+npm run agent:e2e:official
 ```
 
 ## 4. 配置初始化（POST /agent/config/init）
@@ -112,6 +114,12 @@ npm run agent:publish:browser
 1. Agent 执行 `WECHAT_AGENT_BROWSER_PUBLISH_CMD <payload-json-path>`
 2. 命令需输出 JSON，最少包含 `ok` 字段（`true/false`）
 3. `ok=true` 时 Agent 返回 `accepted(channel=browser)`，可带 `publish_url`
+
+仓库内提供了联调用 mock 命令：
+
+`scripts/browser-publisher/mock-success.mjs`
+
+用于打通链路（不真实发文）。
 
 ## 8. 关键接口汇总
 
