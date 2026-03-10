@@ -122,6 +122,7 @@ async function main() {
       task_id: payload.task_id,
       idempotency_key: payload.idempotency_key,
       preferred_channel: payload.preferred_channel,
+      browser_login_only: payload.browser_login_only === true,
       title: payload.title,
       reviewer: options.reviewer,
       auto_review_token: options.autoReviewToken,

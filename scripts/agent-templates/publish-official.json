@@ -1,11 +1,11 @@
 {
   "task_id": "wx_20260305_001",
-  "idempotency_key": "wx_20260305_001_v1",
-  "title": "测试标题",
+  "idempotency_key": "wx_20260305_001_v3",
+  "title": "测试标题1234",
   "content": "<p>测试正文</p>",
   "review_approved": true,
   "preferred_channel": "official",
-  "thumb_media_id": "YOUR_THUMB_MEDIA_ID",
+  "thumb_media_id": "ja71cTKSIGSfDjsOPS1ZRQoGrsviUCuTDTZeRknG0YGuKRo0SQqr1SMIDRWsfMjM",
   "author": "Agent-Team",
   "digest": "测试摘要",
   "content_source_url": "https://example.com/source"

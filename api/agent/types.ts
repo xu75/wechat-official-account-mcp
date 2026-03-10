@@ -8,6 +8,7 @@ export interface PublishRequest {
   review_approved: boolean;
   review_approval_token?: string;
   preferred_channel?: PublishChannel;
+  browser_login_only?: boolean;
   thumb_media_id?: string;
   author?: string;
   digest?: string;
@@ -17,12 +18,18 @@ export interface PublishRequest {
 export interface PublishResponse {
   task_id: string;
   idempotency_key: string;
-  status: 'accepted' | 'publish_failed';
+  status: 'accepted' | 'publish_failed' | 'waiting_login';
   channel: PublishChannel;
   dedup_hit: boolean;
   publish_id?: string;
   draft_media_id?: string;
   publish_url?: string;
+  login_url?: string;
+  login_session_id?: string;
+  login_session_expires_at?: string;
+  login_qr_available?: boolean;
+  login_qr_mime?: string;
+  login_qr_png_base64?: string;
   error_code?: string;
   error_message?: string;
   duration_ms?: number;
@@ -52,6 +59,7 @@ export interface AgentConfigCheckRequest {
     review_approved: boolean;
     review_approval_token?: string;
     preferred_channel?: PublishChannel;
+    browser_login_only?: boolean;
     thumb_media_id?: string;
     author?: string;
     digest?: string;

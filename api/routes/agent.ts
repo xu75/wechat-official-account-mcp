@@ -12,6 +12,7 @@ import {
 } from '../agent/schemas.js';
 import { getAgentLogPath, writeAgentLog } from '../agent/audit-log.js';
 import { getIdempotencyTtlMs, getIdempotentResult, saveIdempotentResult } from '../agent/idempotency-store.js';
+import { getLoginSession, getLoginSessionByRequest, getLoginSessionTtlMs } from '../agent/login-session-store.js';
 import {
   getBrowserManualTaskDir,
   getBrowserPublishMode,
@@ -38,6 +39,7 @@ router.get('/health', (_req: Request, res: Response) => {
     browser_fallback_enabled: isBrowserFallbackEnabled(),
     browser_publish_mode: getBrowserPublishMode(),
     browser_command_configured: isBrowserCommandConfigured(),
+    login_session_ttl_ms: getLoginSessionTtlMs(),
     browser_manual_task_dir: getBrowserManualTaskDir(),
     review_check: getReviewApprovalPolicy(),
     replay_window_seconds: getReplayWindowSeconds(),
@@ -85,10 +87,12 @@ router.post('/publish', verifyAgentSignature, async (req: Request, res: Response
 
     const result = await publishArticle(payload);
 
-    saveIdempotentResult(payload, result);
+    if (result.status !== 'waiting_login') {
+      saveIdempotentResult(payload, result);
+    }
     updateLastPublishSummary(result);
 
-    const statusCode = result.status === 'accepted' ? 202 : 200;
+    const statusCode = (result.status === 'accepted' || result.status === 'waiting_login') ? 202 : 200;
     res.status(statusCode).json(result);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -213,6 +217,96 @@ router.post('/callback', verifyAgentSignature, async (req: Request, res: Respons
       error: error instanceof Error ? error.message : 'internal error',
     });
   }
+});
+
+router.get('/agent/login-session/:sessionId', verifyAgentSignature, async (req: Request, res: Response) => {
+  const sessionId = String(req.params.sessionId || '').trim();
+  if (!sessionId) {
+    res.status(400).json({ success: false, error: 'sessionId is required' });
+    return;
+  }
+
+  const session = getLoginSession(sessionId);
+  if (!session) {
+    res.status(404).json({ success: false, error: 'login session not found or expired' });
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    session: {
+      session_id: session.session_id,
+      task_id: session.task_id,
+      idempotency_key: session.idempotency_key,
+      channel: session.channel,
+      login_url: session.login_url,
+      qr_available: Boolean(session.qr_png_base64),
+      error_code: session.error_code,
+      error_message: session.error_message,
+      created_at: session.created_at,
+      expires_at: session.expires_at,
+    },
+  });
+});
+
+router.get('/agent/login-session/:sessionId/qr', verifyAgentSignature, async (req: Request, res: Response) => {
+  const sessionId = String(req.params.sessionId || '').trim();
+  if (!sessionId) {
+    res.status(400).json({ success: false, error: 'sessionId is required' });
+    return;
+  }
+
+  const session = getLoginSession(sessionId);
+  if (!session) {
+    res.status(404).json({ success: false, error: 'login session not found or expired' });
+    return;
+  }
+
+  if (!session.qr_png_base64) {
+    res.status(404).json({ success: false, error: 'login qr is not available for this session' });
+    return;
+  }
+
+  const mime = session.qr_mime || 'image/png';
+  res.status(200).json({
+    success: true,
+    session_id: session.session_id,
+    mime,
+    png_base64: session.qr_png_base64,
+    data_url: `data:${mime};base64,${session.qr_png_base64}`,
+    expires_at: session.expires_at,
+  });
+});
+
+router.get('/agent/login-session/by-request/:taskId/:idempotencyKey', verifyAgentSignature, async (req: Request, res: Response) => {
+  const taskId = String(req.params.taskId || '').trim();
+  const idempotencyKey = String(req.params.idempotencyKey || '').trim();
+  if (!taskId || !idempotencyKey) {
+    res.status(400).json({ success: false, error: 'taskId and idempotencyKey are required' });
+    return;
+  }
+
+  const session = getLoginSessionByRequest(taskId, idempotencyKey);
+  if (!session) {
+    res.status(404).json({ success: false, error: 'login session not found or expired' });
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    session: {
+      session_id: session.session_id,
+      task_id: session.task_id,
+      idempotency_key: session.idempotency_key,
+      channel: session.channel,
+      login_url: session.login_url,
+      qr_available: Boolean(session.qr_png_base64),
+      error_code: session.error_code,
+      error_message: session.error_message,
+      created_at: session.created_at,
+      expires_at: session.expires_at,
+    },
+  });
 });
 
 export default router;

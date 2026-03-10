@@ -78,16 +78,14 @@ async function main() {
     'Content-Type': 'application/json',
   };
 
-  if (method !== 'GET') {
-    if (!secret) {
-      console.error('WECHAT_AGENT_SIGNING_SECRET is required for non-GET requests');
-      process.exit(1);
-    }
-
+  if (secret) {
     const payload = `${method}\n${requestPath}\n${timestamp}\n${bodyHash}`;
     const signature = hmacHex(secret, payload);
     headers['X-Timestamp'] = timestamp;
     headers['X-Signature'] = signature;
+  } else if (method !== 'GET') {
+    console.error('WECHAT_AGENT_SIGNING_SECRET is required for non-GET requests');
+    process.exit(1);
   }
 
   const url = new URL(requestPath, baseUrl).toString();
@@ -104,7 +102,7 @@ async function main() {
     request: {
       method,
       url,
-      signed: method !== 'GET',
+      signed: Boolean(headers['X-Signature']),
       timestamp: headers['X-Timestamp'] || null,
     },
     response: {

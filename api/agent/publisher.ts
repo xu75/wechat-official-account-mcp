@@ -5,20 +5,33 @@ import { writeAgentLog } from './audit-log.js';
 import { PublishRequest, PublishResponse } from './types.js';
 import { getAuthManager, getWechatApiClient, initializeWechatContext } from './wechat-context.js';
 import { verifyReviewApproval } from './review-approval.js';
+import { upsertLoginSession } from './login-session-store.js';
 
 type BrowserPublishMode = 'command' | 'manual';
 
 type BrowserPublishResult = {
   publishUrl?: string;
   detail: string;
+  stage?: string;
+  status?: string;
+  contentLength?: number;
+  expectedImageCount?: number;
+  actualImageCount?: number;
+  inputImageCount?: number;
+  imageSkippedCount?: number;
+  imageMode?: string;
+  submitConfirmed?: boolean;
+  successHintMatched?: boolean;
 };
 
 class AgentPublishError extends Error {
   code: string;
+  metadata?: Record<string, unknown>;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, metadata?: Record<string, unknown>) {
     super(message);
     this.code = code;
+    this.metadata = metadata;
   }
 }
 
@@ -77,7 +90,26 @@ function sanitizeTaskId(input: string): string {
   return input.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-function parseBrowserCommandResult(stdout: string): { ok: boolean; publish_url?: string; message?: string; error_code?: string; error_message?: string } {
+function parseBrowserCommandResult(stdout: string): {
+  ok: boolean;
+  publish_url?: string;
+  login_url?: string;
+  login_qr_mime?: string;
+  login_qr_png_base64?: string;
+  stage?: string;
+  status?: string;
+  content_length?: number;
+  expected_image_count?: number;
+  actual_image_count?: number;
+  input_image_count?: number;
+  image_skipped_count?: number;
+  image_mode?: string;
+  submit_confirmed?: boolean;
+  success_hint_matched?: boolean;
+  message?: string;
+  error_code?: string;
+  error_message?: string;
+} {
   const raw = stdout.trim();
   if (!raw) {
     throw new Error('browser command returned empty stdout');
@@ -171,15 +203,43 @@ class BrowserPublisher {
 
     const result = parseBrowserCommandResult(stdout);
     if (!result.ok) {
+      const stderrTail = stderr.trim().split('\n').slice(-8).join(' | ');
+      const mergedMessage = [
+        result.error_message || result.message || 'browser publish command returned not ok',
+        stderrTail ? `stderr_tail=${stderrTail}` : '',
+      ].filter(Boolean).join(' ; ');
       throw new AgentPublishError(
         result.error_code || 'BROWSER_CMD_REPORTED_FAILURE',
-        result.error_message || result.message || 'browser publish command returned not ok',
+        mergedMessage,
+        {
+          login_url: result.login_url || '',
+          login_qr_mime: result.login_qr_mime || '',
+          login_qr_png_base64: result.login_qr_png_base64 || '',
+          stage: result.stage || '',
+          status: result.status || '',
+          content_length: Number(result.content_length || 0),
+          expected_image_count: Number(result.expected_image_count || 0),
+          actual_image_count: Number(result.actual_image_count || 0),
+          input_image_count: Number(result.input_image_count || 0),
+          image_skipped_count: Number(result.image_skipped_count || 0),
+          image_mode: result.image_mode || '',
+        },
       );
     }
 
     return {
       publishUrl: result.publish_url,
       detail: `browser command publish succeeded via ${browserPublishCmd}`,
+      stage: result.stage || '',
+      status: result.status || '',
+      contentLength: Number(result.content_length || 0),
+      expectedImageCount: Number(result.expected_image_count || 0),
+      actualImageCount: Number(result.actual_image_count || 0),
+      inputImageCount: Number(result.input_image_count || 0),
+      imageSkippedCount: Number(result.image_skipped_count || 0),
+      imageMode: result.image_mode || '',
+      submitConfirmed: result.submit_confirmed === true,
+      successHintMatched: result.success_hint_matched === true,
     };
   }
 
@@ -218,11 +278,12 @@ class BrowserPublisher {
 const officialPublisher = new OfficialPublisher();
 const browserPublisher = new BrowserPublisher();
 
-function normalizeError(error: unknown): { code: string; message: string } {
+function normalizeError(error: unknown): { code: string; message: string; metadata?: Record<string, unknown> } {
   if (error instanceof AgentPublishError) {
     return {
       code: error.code,
       message: error.message,
+      metadata: error.metadata,
     };
   }
 
@@ -255,23 +316,94 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
 
     await writeAgentLog('publish_browser_success', {
       task_id: input.task_id,
+      stage: browserResult.stage || 'post_submit_check',
+      status: browserResult.status || 'published',
       channel: 'browser',
       reason,
       detail: browserResult.detail,
       publish_url: browserResult.publishUrl || '',
+      error_code: '',
+      content_length: Number(browserResult.contentLength || 0),
+      expected_image_count: Number(browserResult.expectedImageCount || 0),
+      actual_image_count: Number(browserResult.actualImageCount || 0),
+      input_image_count: Number(browserResult.inputImageCount || 0),
+      image_skipped_count: Number(browserResult.imageSkippedCount || 0),
+      image_mode: browserResult.imageMode || '',
+      submit_confirmed: browserResult.submitConfirmed === true,
+      success_hint_matched: browserResult.successHintMatched === true,
       duration_ms: response.duration_ms,
     });
 
     return response;
   } catch (browserError) {
     const browserErr = normalizeError(browserError);
+    const loginUrlFromMeta = String(browserErr.metadata?.login_url || '').trim();
+    const loginQrMime = String(browserErr.metadata?.login_qr_mime || '').trim();
+    const loginQrPngBase64 = String(browserErr.metadata?.login_qr_png_base64 || '').trim();
+    const loginRequired = browserErr.code === 'BROWSER_LOGIN_REQUIRED';
+
+    if (loginRequired) {
+      const loginSession = upsertLoginSession({
+        task_id: input.task_id,
+        idempotency_key: input.idempotency_key,
+        login_url: loginUrlFromMeta || 'https://mp.weixin.qq.com/',
+        qr_mime: loginQrMime || '',
+        qr_png_base64: loginQrPngBase64 || '',
+        error_code: browserErr.code,
+        error_message: browserErr.message,
+      });
+
+      const response: PublishResponse = {
+        task_id: input.task_id,
+        idempotency_key: input.idempotency_key,
+        status: 'waiting_login',
+        channel: 'browser',
+        dedup_hit: false,
+        login_url: loginSession.login_url,
+        login_session_id: loginSession.session_id,
+        login_session_expires_at: loginSession.expires_at,
+        login_qr_available: Boolean(loginSession.qr_png_base64),
+        login_qr_mime: loginSession.qr_mime || undefined,
+        login_qr_png_base64: loginSession.qr_png_base64 || undefined,
+        error_code: browserErr.code,
+        error_message: browserErr.message,
+        duration_ms: Date.now() - startedAt,
+      };
+
+      await writeAgentLog('publish_browser_waiting_login', {
+        task_id: input.task_id,
+        stage: String(browserErr.metadata?.stage || 'login'),
+        status: String(browserErr.metadata?.status || 'waiting_login'),
+        channel: 'browser',
+        reason,
+        error_code: browserErr.code,
+        error_message: browserErr.message,
+        content_length: Number(browserErr.metadata?.content_length || 0),
+        input_image_count: Number(browserErr.metadata?.input_image_count || 0),
+        image_skipped_count: Number(browserErr.metadata?.image_skipped_count || 0),
+        image_mode: String(browserErr.metadata?.image_mode || ''),
+        login_url: response.login_url || '',
+        login_session_id: response.login_session_id || '',
+        login_qr_available: response.login_qr_available === true,
+      });
+
+      return response;
+    }
 
     await writeAgentLog('publish_browser_failed', {
       task_id: input.task_id,
+      stage: String(browserErr.metadata?.stage || 'runtime'),
+      status: String(browserErr.metadata?.status || 'failed'),
       channel: 'browser',
       reason,
       error_code: browserErr.code,
       error_message: browserErr.message,
+      content_length: Number(browserErr.metadata?.content_length || 0),
+      expected_image_count: Number(browserErr.metadata?.expected_image_count || 0),
+      actual_image_count: Number(browserErr.metadata?.actual_image_count || 0),
+      input_image_count: Number(browserErr.metadata?.input_image_count || 0),
+      image_skipped_count: Number(browserErr.metadata?.image_skipped_count || 0),
+      image_mode: String(browserErr.metadata?.image_mode || ''),
     });
 
     return {

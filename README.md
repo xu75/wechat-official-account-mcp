@@ -2,6 +2,14 @@
 
 一个为 AI 应用提供微信公众号 API 集成的 MCP (Model Context Protocol) 服务项目。
 
+> [!IMPORTANT]
+> 本仓库基于原始 `wechat-official-account-mcp` 演进，目前同时维护两条能力：
+> 1. 原始能力：微信公众号官方 API 的 MCP 工具集（适用于已认证并开通对应权限的账号）。
+> 2. 当前新增能力：`wechat-publisher-agent` + 浏览器自动化发布链路（适用于个人号/无官方发布权限场景）。
+>
+> 如果你是按“OpenClaw/ECS -> 本地 Agent -> 微信后台”方式使用，请先看：
+> **[当前分支实现说明 (docs/CURRENT_IMPLEMENTATION.md)](./docs/CURRENT_IMPLEMENTATION.md)**。
+
 **作者**: xwang152-jack <xwang152@163.com>
 **更新日期**: 2025年02月16日
 
@@ -15,6 +23,7 @@
 
 ## 📖 文档导航
 
+- **[当前分支实现说明 (docs/CURRENT_IMPLEMENTATION.md)](./docs/CURRENT_IMPLEMENTATION.md)** - 当前实际推荐链路（Agent + Browser）、端到端状态机、联调入口
 - **[功能总览 (FEATURES_OVERVIEW.md)](./FEATURES_OVERVIEW.md)** - v2.0.0 完整功能介绍、对比表格和使用场景
 - **[更新日志 (CHANGELOG.md)](./CHANGELOG.md)** - 版本历史和详细更新内容
 - **[开发者指南 (CLAUDE.md)](./CLAUDE.md)** - 架构说明、开发规范、常见模式

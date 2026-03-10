@@ -1,5 +1,8 @@
 # Wechat Publisher Agent（Phase B）联调指南
 
+> 先读总览：[`docs/CURRENT_IMPLEMENTATION.md`](./CURRENT_IMPLEMENTATION.md)  
+> 本文聚焦 Phase B 联调细节与命令，不重复解释双轨架构背景。
+
 本文档用于 ECS 与本地 Mac `wechat-publisher-agent` 联调，目标是跑通：
 
 1. 配置初始化
@@ -13,7 +16,7 @@
 npm run agent:start
 ```
 
-> 生产建议通过 FRP 暴露 `remote:13001 -> 127.0.0.1:4273`。
+> 生产建议通过 FRP 暴露 `remote:14273 -> 127.0.0.1:4273`。
 
 ## 2. 环境变量
 

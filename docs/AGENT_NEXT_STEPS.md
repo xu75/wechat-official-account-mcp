@@ -1,5 +1,8 @@
 # Wechat Publisher Agent 下一步完整执行清单
 
+> 先读总览：[`docs/CURRENT_IMPLEMENTATION.md`](./CURRENT_IMPLEMENTATION.md)  
+> 本文是执行清单，重点是从 0 到联调通过的操作顺序。
+
 目标：在“个人主体、无法走官方发布接口”的前提下，先把 `browser` 通道跑成可持续联调链路，并保留后续迁移到 `official` 的接口兼容性。
 
 ## A. 一次性准备
