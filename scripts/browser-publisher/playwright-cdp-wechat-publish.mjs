@@ -308,24 +308,40 @@ async function isShopMessageEditor(page) {
   return byDom || byUrl;
 }
 
+function isArticleEditorUrl(input) {
+  const url = String(input || '');
+  return /\/cgi-bin\/appmsg/i.test(url) || /appmsg_edit_v2|media\/appmsg_edit|action=edit|appmsgid=/i.test(url);
+}
+
 async function isArticleEditor(page) {
   if (await isShopMessageEditor(page)) return false;
   const url = page.url();
-  if (/appmsg_edit_v2|type=10|action=edit/i.test(url) && !/shopmsg|type=11/i.test(url)) {
-    return true;
-  }
+  if (!isArticleEditorUrl(url)) return false;
   const hasRichEditor = await page
-    .locator('.ProseMirror, iframe, [contenteditable="true"][role="textbox"], [contenteditable="true"]')
+    .locator('.ProseMirror, .ql-editor[contenteditable="true"], #tinymce, [contenteditable="true"][role="textbox"], iframe[id*="ueditor"]')
     .first()
     .isVisible()
     .catch(() => false);
-  if (hasRichEditor) return true;
-  const hasArticleHints = await page
-    .locator('text=文章, text=正文, text=保存为草稿, text=保存草稿')
+
+  const hasTitleInput = await page
+    .locator('input#title, input[name="title"], textarea#title, input[placeholder*="标题"], [contenteditable="true"][data-placeholder*="标题"], #js_title')
     .first()
     .isVisible()
     .catch(() => false);
-  return hasArticleHints;
+
+  const hasArticleRoot = await page
+    .locator('#js_appmsg_editor, #appmsg_editor, .appmsg_editor, .rich_media_title')
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  const hasSaveButton = await page
+    .locator('button:has-text("保存为草稿"), button:has-text("保存草稿"), .weui-desktop-btn:has-text("保存为草稿"), .weui-desktop-btn:has-text("保存草稿")')
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  return hasArticleRoot || ((hasTitleInput || hasSaveButton) && hasRichEditor) || (hasTitleInput && hasSaveButton);
 }
 
 async function clickHomeArticleEntry(page, cfg) {
@@ -475,12 +491,7 @@ async function openEditorPage(context, page, cfg, sessionToken) {
   const start = Date.now();
   let sawShopMessage = false;
   let lastTraceAt = 0;
-  while (Date.now() - start < 30000) {
-    if (Date.now() - lastTraceAt > 2500) {
-      const urls = context.pages().map(p => p.url());
-      trace(cfg, 'open_editor_poll', { urls });
-      lastTraceAt = Date.now();
-    }
+  const scanForArticleEditor = async () => {
     for (const p of context.pages()) {
       const u = p.url();
       if (!u.includes('/cgi-bin/')) continue;
@@ -491,7 +502,34 @@ async function openEditorPage(context, page, cfg, sessionToken) {
       }
       if (await isArticleEditor(p)) return p;
     }
+    return null;
+  };
+
+  while (Date.now() - start < 30000) {
+    if (Date.now() - lastTraceAt > 2500) {
+      const urls = context.pages().map(p => p.url());
+      trace(cfg, 'open_editor_poll', { urls });
+      lastTraceAt = Date.now();
+    }
+    const editorPage = await scanForArticleEditor();
+    if (editorPage) return editorPage;
     await humanPause(cfg, 0.7);
+  }
+
+  // Fallback: some account home pages don't open editor from "新的创作" reliably.
+  // Try direct article-editor URL once with token to avoid false "home page as editor".
+  const fallbackPage = page && !page.isClosed() ? page : await pickWechatPage(context);
+  const editUrlWithToken = buildEditUrlWithToken(cfg.editUrl || DEFAULT_EDIT_URL, sessionToken);
+  trace(cfg, 'open_editor_fallback_direct_url', { url: editUrlWithToken });
+  await fallbackPage.goto(editUrlWithToken, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await humanPause(cfg, 0.8);
+  await fallbackPage.waitForLoadState('networkidle').catch(() => {});
+
+  const fallbackStart = Date.now();
+  while (Date.now() - fallbackStart < 15000) {
+    const editorPage = await scanForArticleEditor();
+    if (editorPage) return editorPage;
+    await humanPause(cfg, 0.6);
   }
 
   if (sawShopMessage) {
@@ -501,11 +539,15 @@ async function openEditorPage(context, page, cfg, sessionToken) {
 }
 
 async function fillTitle(page, title, cfg) {
+  if (!isArticleEditorUrl(page.url()) || await isShopMessageEditor(page)) {
+    throw new Error(`article editor page is not ready before title fill; current_url=${page.url()}`);
+  }
+
   const selectors = [
     'input[placeholder*="标题"]',
     '#title',
-    'input.weui-desktop-form__input',
-    '.weui-desktop-form__input',
+    'input[name="title"]',
+    '#js_title',
     '[contenteditable="true"][data-placeholder*="标题"]',
   ];
 
@@ -537,7 +579,9 @@ async function fillTitle(page, title, cfg) {
 }
 
 async function findEditorSurface(page) {
-  const directEditable = page.locator('.ProseMirror, [contenteditable="true"][role="textbox"], [contenteditable="true"]').first();
+  const directEditable = page
+    .locator('.ProseMirror, .ql-editor[contenteditable="true"], #tinymce, [contenteditable="true"][role="textbox"], .rich_media_content[contenteditable="true"]')
+    .first();
   if (await directEditable.isVisible().catch(() => false)) {
     return {
       kind: 'direct',
@@ -547,7 +591,7 @@ async function findEditorSurface(page) {
   }
 
   for (const frame of page.frames()) {
-    const editable = frame.locator('body[contenteditable="true"], #tinymce, [contenteditable="true"]').first();
+    const editable = frame.locator('body[contenteditable="true"], #tinymce, .ProseMirror, .ql-editor[contenteditable="true"], [contenteditable="true"][role="textbox"]').first();
     const visible = await editable.isVisible().catch(() => false);
     if (!visible) continue;
 
