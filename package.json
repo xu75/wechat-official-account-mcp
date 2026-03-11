@@ -60,6 +60,7 @@
     "agent:config:check:browser": "npm run agent:config:check:run -- scripts/agent-templates/config-check-browser.json --preview-from scripts/agent-templates/publish-browser.json",
     "agent:publish:official": "npm run agent:publish -- scripts/agent-templates/publish-official.json",
     "agent:publish:browser": "npm run agent:publish -- scripts/agent-templates/publish-browser.json",
+    "agent:regression:browser": "node scripts/agent-regression-browser.mjs",
     "agent:browser:login": "npm run agent:publish -- scripts/agent-templates/browser-login.json",
     "agent:browser:login:debug": "WECHAT_BROWSER_VERBOSE=true npm run agent:publish -- scripts/agent-templates/browser-login.json",
     "agent:browser:login:confirm": "node scripts/browser-publisher/chrome-cdp-login-confirm.mjs",

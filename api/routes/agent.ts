@@ -30,6 +30,37 @@ const router = Router();
 const AGENT_MODE = 'assist';
 const AGENT_VERSION = process.env.WECHAT_AGENT_VERSION || process.env.npm_package_version || '2.0.0';
 
+function normalizeHeaderValue(header: string | string[] | undefined): string {
+  if (!header) return '';
+  if (Array.isArray(header)) {
+    return header.join(',');
+  }
+  return String(header);
+}
+
+function getRequestMeta(req: Request): {
+  source_ip: string;
+  x_forwarded_for: string;
+  forwarded: string;
+  remote_ip: string;
+} {
+  const xForwardedFor = normalizeHeaderValue(req.headers['x-forwarded-for'] as string | string[] | undefined);
+  const forwarded = normalizeHeaderValue(req.headers.forwarded as string | string[] | undefined);
+  const forwardedFirstIp = xForwardedFor
+    .split(',')
+    .map((item) => item.trim())
+    .find(Boolean) || '';
+  const remoteIp = req.socket?.remoteAddress || '';
+  const sourceIp = forwardedFirstIp || req.ip || remoteIp || '';
+
+  return {
+    source_ip: sourceIp,
+    x_forwarded_for: xForwardedFor,
+    forwarded,
+    remote_ip: remoteIp,
+  };
+}
+
 router.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
     success: true,
@@ -52,11 +83,13 @@ router.get('/health', (_req: Request, res: Response) => {
 
 router.post('/publish', verifyAgentSignature, async (req: Request, res: Response) => {
   try {
+    const requestMeta = getRequestMeta(req);
     const payload: PublishRequest = publishRequestSchema.parse(req.body) as PublishRequestInput as PublishRequest;
 
     const dedup = getIdempotentResult(payload);
     if (dedup.conflict) {
       await writeAgentLog('publish_idempotency_conflict', {
+        ...requestMeta,
         task_id: payload.task_id,
         idempotency_key: payload.idempotency_key,
       });
@@ -70,6 +103,7 @@ router.post('/publish', verifyAgentSignature, async (req: Request, res: Response
 
     if (dedup.found && dedup.response) {
       await writeAgentLog('publish_idempotency_hit', {
+        ...requestMeta,
         task_id: payload.task_id,
         idempotency_key: payload.idempotency_key,
       });
@@ -80,6 +114,7 @@ router.post('/publish', verifyAgentSignature, async (req: Request, res: Response
     }
 
     await writeAgentLog('publish_received', {
+      ...requestMeta,
       task_id: payload.task_id,
       idempotency_key: payload.idempotency_key,
       preferred_channel: payload.preferred_channel || 'official',
@@ -105,6 +140,7 @@ router.post('/publish', verifyAgentSignature, async (req: Request, res: Response
     }
 
     await writeAgentLog('publish_internal_error', {
+      ...getRequestMeta(req),
       error: error instanceof Error ? error.message : 'unknown error',
     });
 
@@ -117,10 +153,12 @@ router.post('/publish', verifyAgentSignature, async (req: Request, res: Response
 
 router.post('/agent/config/init', verifyAgentSignature, async (req: Request, res: Response) => {
   try {
+    const requestMeta = getRequestMeta(req);
     const payload: AgentConfigInitRequest = configInitRequestSchema.parse(req.body) as ConfigInitRequestInput as AgentConfigInitRequest;
     const result = await initializeAgentConfig(payload);
 
     await writeAgentLog('config_initialized', {
+      ...requestMeta,
       app_id: result.app_id,
       token_present: result.token_present,
       encoding_aes_key_present: result.encoding_aes_key_present,
@@ -141,6 +179,7 @@ router.post('/agent/config/init', verifyAgentSignature, async (req: Request, res
     }
 
     await writeAgentLog('config_init_failed', {
+      ...getRequestMeta(req),
       error: error instanceof Error ? error.message : 'unknown error',
     });
 
@@ -153,10 +192,12 @@ router.post('/agent/config/init', verifyAgentSignature, async (req: Request, res
 
 router.post('/agent/config-check', verifyAgentSignature, async (req: Request, res: Response) => {
   try {
+    const requestMeta = getRequestMeta(req);
     const payload: AgentConfigCheckRequest = configCheckRequestSchema.parse(req.body || {}) as ConfigCheckRequestInput as AgentConfigCheckRequest;
     const result = await checkAgentConfig(payload);
 
     await writeAgentLog('config_checked', {
+      ...requestMeta,
       configured: result.configured,
       token_ok: result.token_check.ok,
       publish_check_ok: result.publish_check.ok,
@@ -177,6 +218,7 @@ router.post('/agent/config-check', verifyAgentSignature, async (req: Request, re
     }
 
     await writeAgentLog('config_check_failed', {
+      ...getRequestMeta(req),
       error: error instanceof Error ? error.message : 'unknown error',
     });
 
@@ -189,9 +231,11 @@ router.post('/agent/config-check', verifyAgentSignature, async (req: Request, re
 
 router.post('/callback', verifyAgentSignature, async (req: Request, res: Response) => {
   try {
+    const requestMeta = getRequestMeta(req);
     const payload: CallbackRequestInput = callbackRequestSchema.parse(req.body);
 
     await writeAgentLog('callback_received', {
+      ...requestMeta,
       task_id: payload.task_id,
       status: payload.status,
       message: payload.message || '',

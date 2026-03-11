@@ -96,6 +96,7 @@ npm run agent:health
 npm run agent:config:check:browser
 npm run agent:review:token -- scripts/agent-templates/publish-browser.json --write --timestamp-title
 npm run agent:publish:browser
+npm run agent:regression:browser
 ```
 
 如果触发登录态：
@@ -104,6 +105,11 @@ npm run agent:publish:browser
 - 展示二维码并人工扫码
 - 调用 confirm-login 或单次重试 `/publish`
 - 不建议轮询高频重试
+
+回归脚本说明：
+
+- `npm run agent:regression:browser` 会执行 `health -> publish -> 同 key 重放 publish`
+- 第二次请求必须 `dedup_hit=true`，用于验证幂等未退化
 
 ## 7. 文档阅读顺序（建议）
 
