@@ -14,6 +14,10 @@ type BrowserPublishResult = {
   detail: string;
   stage?: string;
   status?: string;
+  titleSanitized?: boolean;
+  titleOriginalLength?: number;
+  titleLength?: number;
+  submitBlockExcerpt?: string;
   contentLength?: number;
   expectedImageCount?: number;
   actualImageCount?: number;
@@ -98,6 +102,10 @@ function parseBrowserCommandResult(stdout: string): {
   login_qr_png_base64?: string;
   stage?: string;
   status?: string;
+  title_sanitized?: boolean;
+  title_original_length?: number;
+  title_length?: number;
+  submit_block_excerpt?: string;
   content_length?: number;
   expected_image_count?: number;
   actual_image_count?: number;
@@ -217,6 +225,10 @@ class BrowserPublisher {
           login_qr_png_base64: result.login_qr_png_base64 || '',
           stage: result.stage || '',
           status: result.status || '',
+          title_sanitized: result.title_sanitized === true,
+          title_original_length: Number(result.title_original_length || 0),
+          title_length: Number(result.title_length || 0),
+          submit_block_excerpt: String(result.submit_block_excerpt || ''),
           content_length: Number(result.content_length || 0),
           expected_image_count: Number(result.expected_image_count || 0),
           actual_image_count: Number(result.actual_image_count || 0),
@@ -232,6 +244,10 @@ class BrowserPublisher {
       detail: `browser command publish succeeded via ${browserPublishCmd}`,
       stage: result.stage || '',
       status: result.status || '',
+      titleSanitized: result.title_sanitized === true,
+      titleOriginalLength: Number(result.title_original_length || 0),
+      titleLength: Number(result.title_length || 0),
+      submitBlockExcerpt: String(result.submit_block_excerpt || ''),
       contentLength: Number(result.content_length || 0),
       expectedImageCount: Number(result.expected_image_count || 0),
       actualImageCount: Number(result.actual_image_count || 0),
@@ -318,6 +334,10 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       task_id: input.task_id,
       stage: browserResult.stage || 'post_submit_check',
       status: browserResult.status || 'published',
+      title_sanitized: browserResult.titleSanitized === true,
+      title_original_length: Number(browserResult.titleOriginalLength || 0),
+      title_length: Number(browserResult.titleLength || 0),
+      submit_block_excerpt: browserResult.submitBlockExcerpt || '',
       channel: 'browser',
       reason,
       detail: browserResult.detail,
@@ -374,6 +394,10 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
         task_id: input.task_id,
         stage: String(browserErr.metadata?.stage || 'login'),
         status: String(browserErr.metadata?.status || 'waiting_login'),
+        title_sanitized: Boolean(browserErr.metadata?.title_sanitized || false),
+        title_original_length: Number(browserErr.metadata?.title_original_length || 0),
+        title_length: Number(browserErr.metadata?.title_length || 0),
+        submit_block_excerpt: String(browserErr.metadata?.submit_block_excerpt || ''),
         channel: 'browser',
         reason,
         error_code: browserErr.code,
@@ -394,6 +418,10 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       task_id: input.task_id,
       stage: String(browserErr.metadata?.stage || 'runtime'),
       status: String(browserErr.metadata?.status || 'failed'),
+      title_sanitized: Boolean(browserErr.metadata?.title_sanitized || false),
+      title_original_length: Number(browserErr.metadata?.title_original_length || 0),
+      title_length: Number(browserErr.metadata?.title_length || 0),
+      submit_block_excerpt: String(browserErr.metadata?.submit_block_excerpt || ''),
       channel: 'browser',
       reason,
       error_code: browserErr.code,

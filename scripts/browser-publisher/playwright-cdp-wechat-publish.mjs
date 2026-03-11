@@ -293,7 +293,23 @@ async function collectLoginQr(context, preferredPage, cfg) {
 function normalizeTitle(payload) {
   const raw = String(payload.title || '').trim();
   if (!raw) fail('BROWSER_TITLE_EMPTY', 'title is required');
-  return raw;
+
+  const withoutInvisible = raw
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
+  const normalizedSpace = withoutInvisible.replace(/\s+/g, ' ').trim();
+  const maxLength = 64;
+  const sliced = Array.from(normalizedSpace).slice(0, maxLength).join('');
+  const value = sliced.trim();
+
+  if (!value) fail('BROWSER_TITLE_INVALID', 'title is invalid after sanitization');
+
+  return {
+    value,
+    sanitized: value !== raw,
+    original_length: Array.from(raw).length,
+    normalized_length: Array.from(value).length,
+  };
 }
 
 function normalizeContent(payload) {
@@ -740,6 +756,23 @@ async function waitForSuccessHint(page, hints, cfg) {
   return false;
 }
 
+async function detectSubmitBlockingError(page) {
+  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const oneLine = String(bodyText || '').replace(/\s+/g, ' ').trim();
+  if (!oneLine) return null;
+
+  const titleInvalidPattern = /标题.{0,12}(不能|不支持|非法|违规|过长|为空|请填写|请修改)|请输入(标题|文章标题)/;
+  if (titleInvalidPattern.test(oneLine)) {
+    return {
+      code: 'BROWSER_TITLE_INVALID',
+      message: 'submit blocked by title validation in wechat editor',
+      excerpt: oneLine.slice(0, 180),
+    };
+  }
+
+  return null;
+}
+
 async function main() {
   const { payloadPath, payload } = readPayload(process.argv[2] || '');
   const cfg = getEnvConfig();
@@ -751,7 +784,9 @@ async function main() {
   }
 
   const taskId = payload.task_id || 'task';
-  const title = loginOnlyRequested ? '' : normalizeTitle(payload);
+  const titlePlan = loginOnlyRequested
+    ? { value: '', sanitized: false, original_length: 0, normalized_length: 0 }
+    : normalizeTitle(payload);
   const content = loginOnlyRequested ? '' : normalizeContent(payload);
   const contentPlan = loginOnlyRequested
     ? { html: '', image_mode: cfg.imageMode, input_image_count: 0, image_skipped_count: 0 }
@@ -814,7 +849,7 @@ async function main() {
     }
 
     const editorPage = await openEditorPage(context, page, cfg, sessionToken);
-    await fillTitle(editorPage, title, cfg);
+    await fillTitle(editorPage, titlePlan.value, cfg);
     const contentCheck = await fillContent(editorPage, contentPlan.html, cfg);
     const submitResult = await submitArticle(editorPage, cfg.submitMode, cfg);
     const successHintMatched = await waitForSuccessHint(editorPage, submitResult.successHints, cfg).catch(() => false);
@@ -824,13 +859,18 @@ async function main() {
       url: editorPage.url(),
     });
     if (!submitConfirmed) {
+      const submitBlock = await detectSubmitBlockingError(editorPage);
       throw new BrowserPublishValidationError(
-        'BROWSER_SUBMIT_NOT_CONFIRMED',
-        'submit action is not confirmed by page state',
+        submitBlock?.code || 'BROWSER_SUBMIT_NOT_CONFIRMED',
+        submitBlock?.message || 'submit action is not confirmed by page state',
         {
           stage: 'post_submit_check',
           status: 'failed',
           content_length: contentCheck.content_length,
+          title_sanitized: titlePlan.sanitized,
+          title_original_length: titlePlan.original_length,
+          title_length: titlePlan.normalized_length,
+          submit_block_excerpt: submitBlock?.excerpt || '',
         },
       );
     }
@@ -874,6 +914,9 @@ async function main() {
       task_id: taskId,
       payload_path: payloadPath,
       cdp_url: cfg.cdpUrl,
+      title_sanitized: titlePlan.sanitized,
+      title_original_length: titlePlan.original_length,
+      title_length: titlePlan.normalized_length,
       stage: 'post_submit_check',
       status: 'published',
       content_length: contentCheck.content_length,
@@ -924,6 +967,10 @@ async function main() {
           cdp_url: cfg.cdpUrl,
           stage: String(error.metadata?.stage || 'validation'),
           status: String(error.metadata?.status || 'failed'),
+          title_sanitized: Boolean(error.metadata?.title_sanitized || titlePlan.sanitized),
+          title_original_length: Number(error.metadata?.title_original_length || titlePlan.original_length || 0),
+          title_length: Number(error.metadata?.title_length || titlePlan.normalized_length || 0),
+          submit_block_excerpt: String(error.metadata?.submit_block_excerpt || ''),
           content_length: Number(error.metadata?.content_length || 0),
           expected_image_count: Number(error.metadata?.expected_image_count || 0),
           actual_image_count: Number(error.metadata?.actual_image_count || 0),
@@ -946,6 +993,9 @@ async function main() {
         cdp_url: cfg.cdpUrl,
         stage: 'runtime',
         status: 'failed',
+        title_sanitized: titlePlan.sanitized,
+        title_original_length: titlePlan.original_length,
+        title_length: titlePlan.normalized_length,
         content_length: 0,
         input_image_count: Number(contentPlan.input_image_count || 0),
         image_skipped_count: Number(contentPlan.image_skipped_count || 0),
