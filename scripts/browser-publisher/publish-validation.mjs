@@ -80,10 +80,12 @@ export function isSubmissionConfirmed(params) {
   const mode = String(params?.mode || '').toLowerCase();
   const successHintMatched = Boolean(params?.successHintMatched);
   const url = toStringSafe(params?.url);
-  const hasAppMsgId = /[?&]appmsgid=\d+/.test(url);
+  const beforeUrl = toStringSafe(params?.beforeUrl);
+  const hasAppMsgIdBefore = /[?&]appmsgid=\d+/.test(beforeUrl);
+  const hasAppMsgIdAfter = /[?&]appmsgid=\d+/.test(url);
 
   if (successHintMatched) return true;
-  if (mode === 'draft' && hasAppMsgId) return true;
+  if (mode === 'draft' && !hasAppMsgIdBefore && hasAppMsgIdAfter) return true;
   if (mode === 'publish' && /publish|sent|group/i.test(url)) return true;
   return false;
 }

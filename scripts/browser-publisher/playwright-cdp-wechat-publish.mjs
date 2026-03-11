@@ -492,6 +492,17 @@ async function clickButtonByText(page, labels, cfg) {
 }
 
 async function openEditorPage(context, page, cfg, sessionToken) {
+  const baselineUrls = new Map(context.pages().map((p) => [p, p.url()]));
+  const isCandidateEditorPage = (p) => {
+    if (p === page) return true;
+    if (!baselineUrls.has(p)) return true;
+    const before = String(baselineUrls.get(p) || '');
+    const now = String(p.url() || '');
+    // Reject stale editor tabs that existed before this run.
+    if (isArticleEditorUrl(before) && isArticleEditorUrl(now)) return false;
+    return true;
+  };
+
   const homeUrl = buildEditUrlWithToken('https://mp.weixin.qq.com/cgi-bin/home?t=home/index', sessionToken);
   await page.goto(homeUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await humanPause(cfg, 0.8);
@@ -509,6 +520,7 @@ async function openEditorPage(context, page, cfg, sessionToken) {
   let lastTraceAt = 0;
   const scanForArticleEditor = async () => {
     for (const p of context.pages()) {
+      if (!isCandidateEditorPage(p)) continue;
       const u = p.url();
       if (!u.includes('/cgi-bin/')) continue;
       if (isLoginRelatedUrl(u)) continue;
@@ -851,11 +863,13 @@ async function main() {
     const editorPage = await openEditorPage(context, page, cfg, sessionToken);
     await fillTitle(editorPage, titlePlan.value, cfg);
     const contentCheck = await fillContent(editorPage, contentPlan.html, cfg);
+    const beforeSubmitUrl = editorPage.url();
     const submitResult = await submitArticle(editorPage, cfg.submitMode, cfg);
     const successHintMatched = await waitForSuccessHint(editorPage, submitResult.successHints, cfg).catch(() => false);
     const submitConfirmed = isSubmissionConfirmed({
       mode: submitResult.mode,
       successHintMatched,
+      beforeUrl: beforeSubmitUrl,
       url: editorPage.url(),
     });
     if (!submitConfirmed) {
@@ -867,6 +881,8 @@ async function main() {
           stage: 'post_submit_check',
           status: 'failed',
           content_length: contentCheck.content_length,
+          before_submit_url: beforeSubmitUrl,
+          current_url: editorPage.url(),
           title_sanitized: titlePlan.sanitized,
           title_original_length: titlePlan.original_length,
           title_length: titlePlan.normalized_length,
@@ -917,6 +933,7 @@ async function main() {
       title_sanitized: titlePlan.sanitized,
       title_original_length: titlePlan.original_length,
       title_length: titlePlan.normalized_length,
+      before_submit_url: beforeSubmitUrl,
       stage: 'post_submit_check',
       status: 'published',
       content_length: contentCheck.content_length,
@@ -970,6 +987,8 @@ async function main() {
           title_sanitized: Boolean(error.metadata?.title_sanitized || titlePlan.sanitized),
           title_original_length: Number(error.metadata?.title_original_length || titlePlan.original_length || 0),
           title_length: Number(error.metadata?.title_length || titlePlan.normalized_length || 0),
+          before_submit_url: String(error.metadata?.before_submit_url || ''),
+          current_url: String(error.metadata?.current_url || ''),
           submit_block_excerpt: String(error.metadata?.submit_block_excerpt || ''),
           content_length: Number(error.metadata?.content_length || 0),
           expected_image_count: Number(error.metadata?.expected_image_count || 0),

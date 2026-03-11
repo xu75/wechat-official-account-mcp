@@ -14,6 +14,8 @@ type BrowserPublishResult = {
   detail: string;
   stage?: string;
   status?: string;
+  beforeSubmitUrl?: string;
+  currentUrl?: string;
   titleSanitized?: boolean;
   titleOriginalLength?: number;
   titleLength?: number;
@@ -102,6 +104,8 @@ function parseBrowserCommandResult(stdout: string): {
   login_qr_png_base64?: string;
   stage?: string;
   status?: string;
+  before_submit_url?: string;
+  current_url?: string;
   title_sanitized?: boolean;
   title_original_length?: number;
   title_length?: number;
@@ -225,6 +229,8 @@ class BrowserPublisher {
           login_qr_png_base64: result.login_qr_png_base64 || '',
           stage: result.stage || '',
           status: result.status || '',
+          before_submit_url: String(result.before_submit_url || ''),
+          current_url: String(result.current_url || ''),
           title_sanitized: result.title_sanitized === true,
           title_original_length: Number(result.title_original_length || 0),
           title_length: Number(result.title_length || 0),
@@ -244,6 +250,8 @@ class BrowserPublisher {
       detail: `browser command publish succeeded via ${browserPublishCmd}`,
       stage: result.stage || '',
       status: result.status || '',
+      beforeSubmitUrl: String(result.before_submit_url || ''),
+      currentUrl: String(result.current_url || ''),
       titleSanitized: result.title_sanitized === true,
       titleOriginalLength: Number(result.title_original_length || 0),
       titleLength: Number(result.title_length || 0),
@@ -334,6 +342,8 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       task_id: input.task_id,
       stage: browserResult.stage || 'post_submit_check',
       status: browserResult.status || 'published',
+      before_submit_url: browserResult.beforeSubmitUrl || '',
+      current_url: browserResult.currentUrl || '',
       title_sanitized: browserResult.titleSanitized === true,
       title_original_length: Number(browserResult.titleOriginalLength || 0),
       title_length: Number(browserResult.titleLength || 0),
@@ -394,6 +404,8 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
         task_id: input.task_id,
         stage: String(browserErr.metadata?.stage || 'login'),
         status: String(browserErr.metadata?.status || 'waiting_login'),
+        before_submit_url: String(browserErr.metadata?.before_submit_url || ''),
+        current_url: String(browserErr.metadata?.current_url || ''),
         title_sanitized: Boolean(browserErr.metadata?.title_sanitized || false),
         title_original_length: Number(browserErr.metadata?.title_original_length || 0),
         title_length: Number(browserErr.metadata?.title_length || 0),
@@ -418,6 +430,8 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       task_id: input.task_id,
       stage: String(browserErr.metadata?.stage || 'runtime'),
       status: String(browserErr.metadata?.status || 'failed'),
+      before_submit_url: String(browserErr.metadata?.before_submit_url || ''),
+      current_url: String(browserErr.metadata?.current_url || ''),
       title_sanitized: Boolean(browserErr.metadata?.title_sanitized || false),
       title_original_length: Number(browserErr.metadata?.title_original_length || 0),
       title_length: Number(browserErr.metadata?.title_length || 0),

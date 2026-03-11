@@ -28,9 +28,20 @@ test('content injection success should pass validation and be publishable', () =
   const submitted = isSubmissionConfirmed({
     mode: 'draft',
     successHintMatched: true,
+    beforeUrl: 'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1',
     url: 'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit&action=edit&appmsgid=10001',
   });
   assert.equal(submitted, true);
+});
+
+test('draft submit without success hint should fail on stale editor with existing appmsgid', () => {
+  const submitted = isSubmissionConfirmed({
+    mode: 'draft',
+    successHintMatched: false,
+    beforeUrl: 'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit&action=edit&appmsgid=10001',
+    url: 'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit&action=edit&appmsgid=10001',
+  });
+  assert.equal(submitted, false);
 });
 
 test('image insertion failure must keep non-empty content and expose explicit error', () => {
