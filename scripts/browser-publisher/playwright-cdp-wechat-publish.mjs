@@ -5,9 +5,9 @@ import path from 'path';
 import {
   collectImageSources,
   isSubmissionConfirmed,
-  stripImageTags,
   validateEditorContentSnapshot,
 } from './publish-validation.mjs';
+import { appendLinkUrlsAsVisibleText, createInitialCoverPlan, prepareContentForPublish } from './content-plan.mjs';
 
 const DEFAULT_HOME_URL = 'https://mp.weixin.qq.com/';
 const DEFAULT_EDIT_URL = 'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1';
@@ -78,7 +78,6 @@ function getEnvConfig() {
   return {
     cdpUrl,
     submitMode: (process.env.WECHAT_BROWSER_SUBMIT_MODE || 'draft').toLowerCase(),
-    loginOnly: process.env.WECHAT_BROWSER_LOGIN_ONLY === 'true',
     loginTimeoutMs: Number(process.env.WECHAT_BROWSER_LOGIN_TIMEOUT_MS || '180000'),
     publishLoginTimeoutMs: Number(process.env.WECHAT_BROWSER_PUBLISH_LOGIN_TIMEOUT_MS || '30000'),
     returnLoginQr: process.env.WECHAT_BROWSER_RETURN_LOGIN_QR !== 'false',
@@ -87,34 +86,13 @@ function getEnvConfig() {
     debugDir: path.resolve(expandHome(process.env.WECHAT_BROWSER_DEBUG_DIR || '/tmp/wechat-agent-browser-debug')),
     editUrl: process.env.WECHAT_BROWSER_EDIT_URL || DEFAULT_EDIT_URL,
     dryRun: process.env.WECHAT_BROWSER_DRY_RUN === 'true',
-    loginOnlyHoldMs: Number(process.env.WECHAT_BROWSER_LOGIN_ONLY_HOLD_MS || '8000'),
-    imageMode: (process.env.WECHAT_BROWSER_IMAGE_MODE || 'skip').toLowerCase() === 'strict' ? 'strict' : 'skip',
     verbose: process.env.WECHAT_BROWSER_VERBOSE === 'true',
+    strictLinkCheck: process.env.WECHAT_BROWSER_STRICT_LINK_CHECK === 'true',
+    linkTextFallbackEnabled: process.env.WECHAT_BROWSER_LINK_TEXT_FALLBACK_ENABLED !== 'false',
     humanDelayBaseMs: Number.isFinite(humanDelayBaseMs) && humanDelayBaseMs >= 0 ? humanDelayBaseMs : 700,
     humanDelayJitterMs: Number.isFinite(humanDelayJitterMs) && humanDelayJitterMs >= 0 ? humanDelayJitterMs : 500,
     typeDelayMinMs: normalizedTypeMin,
     typeDelayMaxMs: normalizedTypeMax,
-  };
-}
-
-function prepareContentForPublish(inputHtml, cfg) {
-  const html = String(inputHtml || '');
-  const inputImages = collectImageSources(html);
-  if (cfg.imageMode !== 'strict') {
-    const stripped = stripImageTags(html);
-    return {
-      html: stripped,
-      image_mode: 'skip',
-      input_image_count: inputImages.length,
-      image_skipped_count: inputImages.length,
-    };
-  }
-
-  return {
-    html,
-    image_mode: 'strict',
-    input_image_count: inputImages.length,
-    image_skipped_count: 0,
   };
 }
 
@@ -462,7 +440,7 @@ async function ensureLoggedIn(page, cfg, options = {}) {
       page.url() || DEFAULT_HOME_URL,
     );
   }
-  throw new Error(`login timeout after ${timeoutMs}ms; if this is publish mode, run npm run agent:browser:login:confirm first`);
+  throw new Error(`login timeout after ${timeoutMs}ms; return waiting_login and complete QR scan via login-session API`);
 }
 
 async function clickButtonByText(page, labels, cfg) {
@@ -585,22 +563,81 @@ async function fillTitle(page, title, cfg) {
     if (!visible) continue;
 
     const tagName = await locator.evaluate(el => el.tagName.toLowerCase()).catch(() => '');
-    if (tagName === 'input' || tagName === 'textarea') {
-      await humanPause(cfg, 0.6);
-      await locator.fill('');
-      await humanPause(cfg, 0.4);
-      await locator.type(title, { delay: randomTypeDelayMs(cfg) });
-      await humanPause(cfg, 0.6);
-      return;
+    const isInput = tagName === 'input' || tagName === 'textarea';
+    const attempts = [];
+
+    if (isInput) {
+      attempts.push(async () => {
+        await humanPause(cfg, 0.6);
+        await locator.click({ timeout: 8000 });
+        await humanPause(cfg, 0.3);
+        await locator.fill('', { timeout: 8000 });
+        await humanPause(cfg, 0.3);
+        await locator.type(title, { delay: randomTypeDelayMs(cfg), timeout: 12000 });
+        await humanPause(cfg, 0.5);
+      });
+      attempts.push(async () => {
+        await humanPause(cfg, 0.4);
+        await locator.fill(title, { timeout: 8000 });
+        await humanPause(cfg, 0.4);
+      });
+      attempts.push(async () => {
+        await locator.evaluate((el, value) => {
+          if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+          el.value = '';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.value = String(value || '');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, title);
+        await humanPause(cfg, 0.3);
+      });
+    } else {
+      attempts.push(async () => {
+        await humanPause(cfg, 0.6);
+        await locator.click({ timeout: 8000 });
+        await page.keyboard.press('ControlOrMeta+A').catch(() => {});
+        await humanPause(cfg, 0.3);
+        await page.keyboard.type(title, { delay: randomTypeDelayMs(cfg) });
+        await humanPause(cfg, 0.5);
+      });
+      attempts.push(async () => {
+        await locator.evaluate((el, value) => {
+          if (!(el instanceof HTMLElement)) return;
+          el.innerText = '';
+          el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          el.innerText = String(value || '');
+          el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, title);
+        await humanPause(cfg, 0.3);
+      });
     }
 
-    await humanPause(cfg, 0.6);
-    await locator.click();
-    await page.keyboard.press('ControlOrMeta+A').catch(() => {});
-    await humanPause(cfg, 0.4);
-    await page.keyboard.type(title, { delay: randomTypeDelayMs(cfg) });
-    await humanPause(cfg, 0.6);
-    return;
+    const errors = [];
+    for (const attempt of attempts) {
+      try {
+        await attempt();
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+        continue;
+      }
+
+      const valueOk = await locator.evaluate((el, expected) => {
+        const normalized = String(expected || '').replace(/\s+/g, ' ').trim();
+        const readValue = (() => {
+          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el.value || '';
+          if (el instanceof HTMLElement) return el.innerText || el.textContent || '';
+          return '';
+        })();
+        return String(readValue).replace(/\s+/g, ' ').trim() === normalized;
+      }, title).catch(() => false);
+
+      if (valueOk) return;
+      errors.push('title_value_not_matched_after_attempt');
+    }
+
+    throw new Error(`title input failed for selector ${selector}: ${errors.join(' | ')}`);
   }
 
   throw new Error('failed to locate article title input in editor page');
@@ -685,7 +722,21 @@ async function fillContent(page, htmlContent, cfg) {
 
   try {
     await surface.locator.evaluate((el, html) => {
-      el.innerHTML = html;
+      if (!(el instanceof HTMLElement)) return;
+      el.focus();
+      el.innerHTML = String(html || '');
+      // Use minimal sync events to avoid editor fallback to plain-text insertion.
+      try {
+        if (typeof InputEvent === 'function') {
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+        } else {
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
     }, htmlContent);
   } catch (error) {
     throw new BrowserPublishValidationError(
@@ -712,6 +763,8 @@ async function fillContent(page, htmlContent, cfg) {
       ? 'editor content is empty after injection'
       : validation.error_code === 'BROWSER_IMAGE_INSERT_FAILED'
         ? 'image insertion failed after content injection'
+        : validation.error_code === 'BROWSER_LINK_INSERT_FAILED'
+          ? 'hyperlink insertion failed after content injection'
         : 'content injection validation failed';
     throw new BrowserPublishValidationError(
       validation.error_code || 'BROWSER_CONTENT_INJECTION_FAILED',
@@ -723,6 +776,11 @@ async function fillContent(page, htmlContent, cfg) {
         expected_image_count: validation.expected_image_count,
         actual_image_count: validation.actual_image_count,
         missing_images: validation.missing_images,
+        image_src_rewritten: validation.image_src_rewritten,
+        missing_image_count_by_quantity: validation.missing_image_count_by_quantity,
+        expected_link_count: validation.expected_link_count,
+        actual_link_count: validation.actual_link_count,
+        missing_link_count_by_quantity: validation.missing_link_count_by_quantity,
         fragment_matched: validation.fragment_matched,
       },
     );
@@ -741,6 +799,120 @@ async function fillContent(page, htmlContent, cfg) {
     fragment_matched: validation.fragment_matched,
     input_text_hash: validation.input_text_hash,
     editor_text_hash: validation.editor_text_hash,
+    image_src_rewritten: validation.image_src_rewritten,
+    missing_image_count_by_quantity: validation.missing_image_count_by_quantity,
+    expected_link_count: validation.expected_link_count,
+    actual_link_count: validation.actual_link_count,
+    missing_link_count_by_quantity: validation.missing_link_count_by_quantity,
+  };
+}
+
+async function applyCoverFromFirstContentImage(page, htmlContent, cfg) {
+  const contentImages = collectImageSources(htmlContent);
+  if (contentImages.length === 0) {
+    return {
+      content_image_found: false,
+      attempted: false,
+      applied: false,
+      reason: 'no_content_image',
+    };
+  }
+
+  const triggerSelectors = [
+    'button:has-text("从正文选择封面")',
+    'a:has-text("从正文选择封面")',
+    '[role="button"]:has-text("从正文选择封面")',
+    'text=从正文选择封面',
+  ];
+
+  let triggerClicked = false;
+  for (const selector of triggerSelectors) {
+    const locator = page.locator(selector).first();
+    const visible = await locator.isVisible().catch(() => false);
+    if (!visible) continue;
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    await humanPause(cfg, 0.5);
+    await locator.click({ timeout: 8000 }).catch(async () => {
+      await humanPause(cfg, 0.3);
+      await locator.click({ timeout: 8000, force: true });
+    });
+    triggerClicked = true;
+    break;
+  }
+
+  if (!triggerClicked) {
+    return {
+      content_image_found: true,
+      attempted: true,
+      applied: false,
+      reason: 'cover_entry_not_found',
+    };
+  }
+
+  await humanPause(cfg, 0.8);
+
+  const dialogSelectors = [
+    '.weui-desktop-dialog:visible',
+    '.weui-desktop-dialog__wrp:visible',
+    '.weui-desktop-popover:visible',
+    '.popover:visible',
+  ];
+
+  let picked = false;
+  let pickedDialog = null;
+  for (const dialogSelector of dialogSelectors) {
+    const dialog = page.locator(dialogSelector).first();
+    const visible = await dialog.isVisible().catch(() => false);
+    if (!visible) continue;
+    const option = dialog
+      .locator('img[src], [style*="background-image"], .cover__item, .weui-desktop-card')
+      .first();
+    const optionVisible = await option.isVisible().catch(() => false);
+    if (!optionVisible) continue;
+    await option.scrollIntoViewIfNeeded().catch(() => {});
+    await humanPause(cfg, 0.4);
+    await option.click({ timeout: 8000 }).catch(async () => {
+      await humanPause(cfg, 0.2);
+      await option.click({ timeout: 8000, force: true });
+    });
+    picked = true;
+    pickedDialog = dialog;
+    break;
+  }
+
+  if (!picked) {
+    return {
+      content_image_found: true,
+      attempted: true,
+      applied: false,
+      reason: 'cover_candidate_not_found',
+    };
+  }
+
+  await humanPause(cfg, 0.6);
+  let confirmed = false;
+  if (pickedDialog) {
+    const labels = ['确定', '确认', '完成'];
+    for (const label of labels) {
+      const button = pickedDialog
+        .locator(`button:has-text("${label}"), a:has-text("${label}"), [role="button"]:has-text("${label}")`)
+        .first();
+      const visible = await button.isVisible().catch(() => false);
+      if (!visible) continue;
+      await humanPause(cfg, 0.4);
+      await button.click({ timeout: 8000 }).catch(async () => {
+        await humanPause(cfg, 0.2);
+        await button.click({ timeout: 8000, force: true });
+      });
+      confirmed = true;
+      break;
+    }
+  }
+  return {
+    content_image_found: true,
+    attempted: true,
+    applied: true,
+    reason: confirmed ? 'cover_selected' : 'cover_selected_without_confirm_button',
   };
 }
 
@@ -788,21 +960,17 @@ async function detectSubmitBlockingError(page) {
 async function main() {
   const { payloadPath, payload } = readPayload(process.argv[2] || '');
   const cfg = getEnvConfig();
-  const loginOnlyRequested = cfg.loginOnly || payload.browser_login_only === true;
-  const interactiveLogin = loginOnlyRequested;
+  const interactiveLogin = false;
 
   if (!['draft', 'publish'].includes(cfg.submitMode)) {
     fail('BROWSER_INVALID_SUBMIT_MODE', `unsupported WECHAT_BROWSER_SUBMIT_MODE: ${cfg.submitMode}`);
   }
 
   const taskId = payload.task_id || 'task';
-  const titlePlan = loginOnlyRequested
-    ? { value: '', sanitized: false, original_length: 0, normalized_length: 0 }
-    : normalizeTitle(payload);
-  const content = loginOnlyRequested ? '' : normalizeContent(payload);
-  const contentPlan = loginOnlyRequested
-    ? { html: '', image_mode: cfg.imageMode, input_image_count: 0, image_skipped_count: 0 }
-    : prepareContentForPublish(content, cfg);
+  const titlePlan = normalizeTitle(payload);
+  const content = normalizeContent(payload);
+  const contentPlan = prepareContentForPublish(content);
+  let coverPlan = createInitialCoverPlan(contentPlan.input_image_count);
 
   if (cfg.dryRun) {
     output({
@@ -811,6 +979,10 @@ async function main() {
       message: 'dry run success; cdp actions skipped',
       mode: cfg.submitMode,
       payload_path: payloadPath,
+      content_image_found: coverPlan.content_image_found,
+      cover_from_content_attempted: coverPlan.attempted,
+      cover_from_content_applied: coverPlan.applied,
+      cover_from_content_reason: coverPlan.reason,
     });
     return;
   }
@@ -846,23 +1018,10 @@ async function main() {
       interactiveLogin,
     });
 
-    if (loginOnlyRequested) {
-      if (cfg.loginOnlyHoldMs > 0) await sleep(cfg.loginOnlyHoldMs);
-      output({
-        ok: true,
-        publish_url: page.url(),
-        message: 'wechat browser login confirmed via cdp',
-        mode: 'login-only',
-        task_id: taskId,
-        payload_path: payloadPath,
-        session_token_present: Boolean(sessionToken),
-      });
-      return;
-    }
-
     const editorPage = await openEditorPage(context, page, cfg, sessionToken);
     await fillTitle(editorPage, titlePlan.value, cfg);
-    const contentCheck = await fillContent(editorPage, contentPlan.html, cfg);
+    let contentCheck = await fillContent(editorPage, contentPlan.html, cfg);
+    coverPlan = await applyCoverFromFirstContentImage(editorPage, contentPlan.html, cfg);
     const beforeSubmitUrl = editorPage.url();
     const submitResult = await submitArticle(editorPage, cfg.submitMode, cfg);
     const successHintMatched = await waitForSuccessHint(editorPage, submitResult.successHints, cfg).catch(() => false);
@@ -903,20 +1062,71 @@ async function main() {
         },
       );
     }
+    let postSubmitValidation = null;
+    let postSubmitLinkDegraded = false;
+    let postSubmitLinkFallbackApplied = false;
+    let postSubmitLinkFallbackError = '';
     if (postSubmitSnapshot.found) {
-      const postSubmitValidation = validateEditorContentSnapshot({
+      postSubmitValidation = validateEditorContentSnapshot({
         inputHtml: contentPlan.html,
         editorHtml: postSubmitSnapshot.html,
         editorText: postSubmitSnapshot.text,
       });
-      if (!postSubmitValidation.ok && postSubmitValidation.error_code === 'BROWSER_EDITOR_EMPTY') {
+      const postSubmitImageMissing = Number(postSubmitValidation.expected_image_count || 0) > Number(postSubmitValidation.actual_image_count || 0);
+      const postSubmitLinkMissing = Number(postSubmitValidation.expected_link_count || 0) > Number(postSubmitValidation.actual_link_count || 0);
+      let postSubmitErrorCode = '';
+      let postSubmitErrorMessage = '';
+      if (postSubmitValidation.content_length <= 0) {
+        postSubmitErrorCode = 'BROWSER_EDITOR_EMPTY';
+        postSubmitErrorMessage = 'editor content is empty after submit';
+      } else if (postSubmitImageMissing) {
+        postSubmitErrorCode = 'BROWSER_IMAGE_INSERT_FAILED';
+        postSubmitErrorMessage = 'image insertion failed after submit';
+      } else if (postSubmitLinkMissing) {
+        postSubmitLinkDegraded = true;
+        if (cfg.linkTextFallbackEnabled && submitResult.mode === 'draft') {
+          const fallbackHtml = appendLinkUrlsAsVisibleText(contentPlan.html);
+          if (fallbackHtml !== contentPlan.html) {
+            try {
+              const fallbackContentCheck = await fillContent(editorPage, fallbackHtml, cfg);
+              await submitArticle(editorPage, cfg.submitMode, cfg);
+              await waitForSuccessHint(editorPage, ['保存成功', '已保存'], cfg).catch(() => false);
+              const fallbackSnapshot = await getEditorSnapshot(editorPage, fallbackContentCheck.surface);
+              if (fallbackSnapshot.found) {
+                postSubmitValidation = validateEditorContentSnapshot({
+                  inputHtml: fallbackHtml,
+                  editorHtml: fallbackSnapshot.html,
+                  editorText: fallbackSnapshot.text,
+                });
+              }
+              contentCheck = fallbackContentCheck;
+              postSubmitLinkFallbackApplied = true;
+            } catch (error) {
+              postSubmitLinkFallbackError = error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
+        if (cfg.strictLinkCheck) {
+          postSubmitErrorCode = 'BROWSER_LINK_INSERT_FAILED';
+          postSubmitErrorMessage = 'hyperlink insertion failed after submit';
+        }
+      }
+
+      if (postSubmitErrorCode) {
         throw new BrowserPublishValidationError(
-          'BROWSER_EDITOR_EMPTY',
-          'editor content is empty after submit',
+          postSubmitErrorCode,
+          postSubmitErrorMessage,
           {
             stage: 'post_submit_check',
             status: 'failed',
             content_length: postSubmitValidation.content_length,
+            expected_image_count: postSubmitValidation.expected_image_count,
+            actual_image_count: postSubmitValidation.actual_image_count,
+            expected_link_count: postSubmitValidation.expected_link_count,
+            actual_link_count: postSubmitValidation.actual_link_count,
+            missing_link_count_by_quantity: postSubmitValidation.missing_link_count_by_quantity,
+            image_src_rewritten: postSubmitValidation.image_src_rewritten,
+            missing_image_count_by_quantity: postSubmitValidation.missing_image_count_by_quantity,
           },
         );
       }
@@ -946,6 +1156,26 @@ async function main() {
       success_hint_matched: successHintMatched,
       input_text_hash: contentCheck.input_text_hash,
       editor_text_hash: contentCheck.editor_text_hash,
+      image_src_rewritten: contentCheck.image_src_rewritten === true,
+      missing_image_count_by_quantity: Number(contentCheck.missing_image_count_by_quantity || 0),
+      expected_link_count: Number(contentCheck.expected_link_count || 0),
+      actual_link_count: Number(contentCheck.actual_link_count || 0),
+      missing_link_count_by_quantity: Number(contentCheck.missing_link_count_by_quantity || 0),
+      post_submit_content_length: Number(postSubmitValidation?.content_length || 0),
+      post_submit_expected_image_count: Number(postSubmitValidation?.expected_image_count || 0),
+      post_submit_actual_image_count: Number(postSubmitValidation?.actual_image_count || 0),
+      post_submit_expected_link_count: Number(postSubmitValidation?.expected_link_count || 0),
+      post_submit_actual_link_count: Number(postSubmitValidation?.actual_link_count || 0),
+      post_submit_missing_link_count_by_quantity: Number(postSubmitValidation?.missing_link_count_by_quantity || 0),
+      post_submit_link_degraded: postSubmitLinkDegraded,
+      post_submit_link_text_fallback_applied: postSubmitLinkFallbackApplied,
+      post_submit_link_text_fallback_error: postSubmitLinkFallbackError,
+      strict_link_check: cfg.strictLinkCheck,
+      link_text_fallback_enabled: cfg.linkTextFallbackEnabled,
+      content_image_found: coverPlan.content_image_found,
+      cover_from_content_attempted: coverPlan.attempted,
+      cover_from_content_applied: coverPlan.applied,
+      cover_from_content_reason: coverPlan.reason,
     });
   } catch (error) {
     if (error instanceof BrowserLoginRequiredError) {
@@ -993,9 +1223,18 @@ async function main() {
           content_length: Number(error.metadata?.content_length || 0),
           expected_image_count: Number(error.metadata?.expected_image_count || 0),
           actual_image_count: Number(error.metadata?.actual_image_count || 0),
+          image_src_rewritten: Boolean(error.metadata?.image_src_rewritten || false),
+          missing_image_count_by_quantity: Number(error.metadata?.missing_image_count_by_quantity || 0),
+          expected_link_count: Number(error.metadata?.expected_link_count || 0),
+          actual_link_count: Number(error.metadata?.actual_link_count || 0),
+          missing_link_count_by_quantity: Number(error.metadata?.missing_link_count_by_quantity || 0),
           input_image_count: Number(contentPlan.input_image_count || 0),
           image_skipped_count: Number(contentPlan.image_skipped_count || 0),
           image_mode: contentPlan.image_mode,
+          content_image_found: Boolean(error.metadata?.content_image_found ?? coverPlan.content_image_found),
+          cover_from_content_attempted: Boolean(error.metadata?.cover_from_content_attempted ?? coverPlan.attempted),
+          cover_from_content_applied: Boolean(error.metadata?.cover_from_content_applied ?? coverPlan.applied),
+          cover_from_content_reason: String(error.metadata?.cover_from_content_reason || coverPlan.reason || ''),
           error_code: error.code,
           ...artifacts,
         },
@@ -1019,6 +1258,10 @@ async function main() {
         input_image_count: Number(contentPlan.input_image_count || 0),
         image_skipped_count: Number(contentPlan.image_skipped_count || 0),
         image_mode: contentPlan.image_mode,
+        content_image_found: coverPlan.content_image_found,
+        cover_from_content_attempted: coverPlan.attempted,
+        cover_from_content_applied: coverPlan.applied,
+        cover_from_content_reason: coverPlan.reason,
         error_code: 'BROWSER_CDP_FAILED',
         ...artifacts,
       }

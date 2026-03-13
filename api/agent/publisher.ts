@@ -23,11 +23,26 @@ type BrowserPublishResult = {
   contentLength?: number;
   expectedImageCount?: number;
   actualImageCount?: number;
+  expectedLinkCount?: number;
+  actualLinkCount?: number;
+  missingLinkCountByQuantity?: number;
   inputImageCount?: number;
   imageSkippedCount?: number;
   imageMode?: string;
+  imageSrcRewritten?: boolean;
+  missingImageCountByQuantity?: number;
   submitConfirmed?: boolean;
   successHintMatched?: boolean;
+  contentImageFound?: boolean;
+  coverFromContentAttempted?: boolean;
+  coverFromContentApplied?: boolean;
+  coverFromContentReason?: string;
+  postSubmitExpectedLinkCount?: number;
+  postSubmitActualLinkCount?: number;
+  postSubmitMissingLinkCountByQuantity?: number;
+  postSubmitLinkDegraded?: boolean;
+  postSubmitLinkTextFallbackApplied?: boolean;
+  postSubmitLinkTextFallbackError?: string;
 };
 
 class AgentPublishError extends Error {
@@ -113,11 +128,26 @@ function parseBrowserCommandResult(stdout: string): {
   content_length?: number;
   expected_image_count?: number;
   actual_image_count?: number;
+  expected_link_count?: number;
+  actual_link_count?: number;
+  missing_link_count_by_quantity?: number;
   input_image_count?: number;
   image_skipped_count?: number;
   image_mode?: string;
+  image_src_rewritten?: boolean;
+  missing_image_count_by_quantity?: number;
   submit_confirmed?: boolean;
   success_hint_matched?: boolean;
+  content_image_found?: boolean;
+  cover_from_content_attempted?: boolean;
+  cover_from_content_applied?: boolean;
+  cover_from_content_reason?: string;
+  post_submit_expected_link_count?: number;
+  post_submit_actual_link_count?: number;
+  post_submit_missing_link_count_by_quantity?: number;
+  post_submit_link_degraded?: boolean;
+  post_submit_link_text_fallback_applied?: boolean;
+  post_submit_link_text_fallback_error?: string;
   message?: string;
   error_code?: string;
   error_message?: string;
@@ -238,9 +268,24 @@ class BrowserPublisher {
           content_length: Number(result.content_length || 0),
           expected_image_count: Number(result.expected_image_count || 0),
           actual_image_count: Number(result.actual_image_count || 0),
+          expected_link_count: Number(result.expected_link_count || 0),
+          actual_link_count: Number(result.actual_link_count || 0),
+          missing_link_count_by_quantity: Number(result.missing_link_count_by_quantity || 0),
           input_image_count: Number(result.input_image_count || 0),
           image_skipped_count: Number(result.image_skipped_count || 0),
           image_mode: result.image_mode || '',
+          image_src_rewritten: result.image_src_rewritten === true,
+          missing_image_count_by_quantity: Number(result.missing_image_count_by_quantity || 0),
+          content_image_found: result.content_image_found === true,
+          cover_from_content_attempted: result.cover_from_content_attempted === true,
+          cover_from_content_applied: result.cover_from_content_applied === true,
+          cover_from_content_reason: String(result.cover_from_content_reason || ''),
+          post_submit_expected_link_count: Number(result.post_submit_expected_link_count || 0),
+          post_submit_actual_link_count: Number(result.post_submit_actual_link_count || 0),
+          post_submit_missing_link_count_by_quantity: Number(result.post_submit_missing_link_count_by_quantity || 0),
+          post_submit_link_degraded: result.post_submit_link_degraded === true,
+          post_submit_link_text_fallback_applied: result.post_submit_link_text_fallback_applied === true,
+          post_submit_link_text_fallback_error: String(result.post_submit_link_text_fallback_error || ''),
         },
       );
     }
@@ -259,11 +304,26 @@ class BrowserPublisher {
       contentLength: Number(result.content_length || 0),
       expectedImageCount: Number(result.expected_image_count || 0),
       actualImageCount: Number(result.actual_image_count || 0),
+      expectedLinkCount: Number(result.expected_link_count || 0),
+      actualLinkCount: Number(result.actual_link_count || 0),
+      missingLinkCountByQuantity: Number(result.missing_link_count_by_quantity || 0),
       inputImageCount: Number(result.input_image_count || 0),
       imageSkippedCount: Number(result.image_skipped_count || 0),
       imageMode: result.image_mode || '',
+      imageSrcRewritten: result.image_src_rewritten === true,
+      missingImageCountByQuantity: Number(result.missing_image_count_by_quantity || 0),
       submitConfirmed: result.submit_confirmed === true,
       successHintMatched: result.success_hint_matched === true,
+      contentImageFound: result.content_image_found === true,
+      coverFromContentAttempted: result.cover_from_content_attempted === true,
+      coverFromContentApplied: result.cover_from_content_applied === true,
+      coverFromContentReason: String(result.cover_from_content_reason || ''),
+      postSubmitExpectedLinkCount: Number(result.post_submit_expected_link_count || 0),
+      postSubmitActualLinkCount: Number(result.post_submit_actual_link_count || 0),
+      postSubmitMissingLinkCountByQuantity: Number(result.post_submit_missing_link_count_by_quantity || 0),
+      postSubmitLinkDegraded: result.post_submit_link_degraded === true,
+      postSubmitLinkTextFallbackApplied: result.post_submit_link_text_fallback_applied === true,
+      postSubmitLinkTextFallbackError: String(result.post_submit_link_text_fallback_error || ''),
     };
   }
 
@@ -356,11 +416,26 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       content_length: Number(browserResult.contentLength || 0),
       expected_image_count: Number(browserResult.expectedImageCount || 0),
       actual_image_count: Number(browserResult.actualImageCount || 0),
+      expected_link_count: Number(browserResult.expectedLinkCount || 0),
+      actual_link_count: Number(browserResult.actualLinkCount || 0),
+      missing_link_count_by_quantity: Number(browserResult.missingLinkCountByQuantity || 0),
       input_image_count: Number(browserResult.inputImageCount || 0),
       image_skipped_count: Number(browserResult.imageSkippedCount || 0),
       image_mode: browserResult.imageMode || '',
+      image_src_rewritten: browserResult.imageSrcRewritten === true,
+      missing_image_count_by_quantity: Number(browserResult.missingImageCountByQuantity || 0),
       submit_confirmed: browserResult.submitConfirmed === true,
       success_hint_matched: browserResult.successHintMatched === true,
+      content_image_found: browserResult.contentImageFound === true,
+      cover_from_content_attempted: browserResult.coverFromContentAttempted === true,
+      cover_from_content_applied: browserResult.coverFromContentApplied === true,
+      cover_from_content_reason: browserResult.coverFromContentReason || '',
+      post_submit_expected_link_count: Number(browserResult.postSubmitExpectedLinkCount || 0),
+      post_submit_actual_link_count: Number(browserResult.postSubmitActualLinkCount || 0),
+      post_submit_missing_link_count_by_quantity: Number(browserResult.postSubmitMissingLinkCountByQuantity || 0),
+      post_submit_link_degraded: browserResult.postSubmitLinkDegraded === true,
+      post_submit_link_text_fallback_applied: browserResult.postSubmitLinkTextFallbackApplied === true,
+      post_submit_link_text_fallback_error: browserResult.postSubmitLinkTextFallbackError || '',
       duration_ms: response.duration_ms,
     });
 
@@ -418,6 +493,12 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
         input_image_count: Number(browserErr.metadata?.input_image_count || 0),
         image_skipped_count: Number(browserErr.metadata?.image_skipped_count || 0),
         image_mode: String(browserErr.metadata?.image_mode || ''),
+        image_src_rewritten: Boolean(browserErr.metadata?.image_src_rewritten || false),
+        missing_image_count_by_quantity: Number(browserErr.metadata?.missing_image_count_by_quantity || 0),
+        content_image_found: Boolean(browserErr.metadata?.content_image_found || false),
+        cover_from_content_attempted: Boolean(browserErr.metadata?.cover_from_content_attempted || false),
+        cover_from_content_applied: Boolean(browserErr.metadata?.cover_from_content_applied || false),
+        cover_from_content_reason: String(browserErr.metadata?.cover_from_content_reason || ''),
         login_url: response.login_url || '',
         login_session_id: response.login_session_id || '',
         login_qr_available: response.login_qr_available === true,
@@ -441,11 +522,20 @@ async function runBrowserPublish(input: PublishRequest, startedAt: number, reaso
       error_code: browserErr.code,
       error_message: browserErr.message,
       content_length: Number(browserErr.metadata?.content_length || 0),
-      expected_image_count: Number(browserErr.metadata?.expected_image_count || 0),
-      actual_image_count: Number(browserErr.metadata?.actual_image_count || 0),
-      input_image_count: Number(browserErr.metadata?.input_image_count || 0),
+        expected_image_count: Number(browserErr.metadata?.expected_image_count || 0),
+        actual_image_count: Number(browserErr.metadata?.actual_image_count || 0),
+        expected_link_count: Number(browserErr.metadata?.expected_link_count || 0),
+        actual_link_count: Number(browserErr.metadata?.actual_link_count || 0),
+        missing_link_count_by_quantity: Number(browserErr.metadata?.missing_link_count_by_quantity || 0),
+        input_image_count: Number(browserErr.metadata?.input_image_count || 0),
       image_skipped_count: Number(browserErr.metadata?.image_skipped_count || 0),
       image_mode: String(browserErr.metadata?.image_mode || ''),
+      image_src_rewritten: Boolean(browserErr.metadata?.image_src_rewritten || false),
+      missing_image_count_by_quantity: Number(browserErr.metadata?.missing_image_count_by_quantity || 0),
+      content_image_found: Boolean(browserErr.metadata?.content_image_found || false),
+      cover_from_content_attempted: Boolean(browserErr.metadata?.cover_from_content_attempted || false),
+      cover_from_content_applied: Boolean(browserErr.metadata?.cover_from_content_applied || false),
+      cover_from_content_reason: String(browserErr.metadata?.cover_from_content_reason || ''),
     });
 
     return {

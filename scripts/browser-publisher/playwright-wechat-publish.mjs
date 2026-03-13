@@ -60,14 +60,12 @@ function getEnvConfig() {
   const normalizedTypeMin = Number.isFinite(typeDelayMinMs) && typeDelayMinMs >= 0 ? typeDelayMinMs : 45;
   const normalizedTypeMax =
     Number.isFinite(typeDelayMaxMs) && typeDelayMaxMs >= normalizedTypeMin ? typeDelayMaxMs : Math.max(normalizedTypeMin, 120);
-  const loginOnlyHoldMs = Number(process.env.WECHAT_BROWSER_LOGIN_ONLY_HOLD_MS || '8000');
   const loginStableRounds = Number(process.env.WECHAT_BROWSER_LOGIN_STABLE_ROUNDS || '1');
 
   return {
     channel: process.env.WECHAT_BROWSER_CHANNEL || 'chrome',
     headless: process.env.WECHAT_BROWSER_HEADLESS === 'true',
     submitMode: (process.env.WECHAT_BROWSER_SUBMIT_MODE || 'draft').toLowerCase(),
-    loginOnly: process.env.WECHAT_BROWSER_LOGIN_ONLY === 'true',
     userDataDir: path.resolve(expandHome(process.env.WECHAT_BROWSER_USER_DATA_DIR || '~/.wechat-agent/pw-profile')),
     actionTimeoutMs: Number(process.env.WECHAT_BROWSER_ACTION_TIMEOUT_MS || '30000'),
     navTimeoutMs: Number(process.env.WECHAT_BROWSER_NAV_TIMEOUT_MS || '60000'),
@@ -79,7 +77,6 @@ function getEnvConfig() {
     humanDelayJitterMs: Number.isFinite(humanDelayJitterMs) && humanDelayJitterMs >= 0 ? humanDelayJitterMs : 500,
     typeDelayMinMs: normalizedTypeMin,
     typeDelayMaxMs: normalizedTypeMax,
-    loginOnlyHoldMs: Number.isFinite(loginOnlyHoldMs) && loginOnlyHoldMs >= 0 ? loginOnlyHoldMs : 8000,
     loginStableRounds: Number.isFinite(loginStableRounds) && loginStableRounds >= 1 ? loginStableRounds : 1,
     verbose: process.env.WECHAT_BROWSER_VERBOSE === 'true',
   };
@@ -577,16 +574,15 @@ async function waitForSuccessHint(page, successHints, cfg) {
 async function main() {
   const { payloadPath, payload } = readPayload(process.argv[2] || '');
   const cfg = getEnvConfig();
-  const loginOnlyRequested = cfg.loginOnly || payload.browser_login_only === true;
-  const effectiveHeadless = loginOnlyRequested ? false : cfg.headless;
+  const effectiveHeadless = cfg.headless;
 
   if (!['draft', 'publish'].includes(cfg.submitMode)) {
     fail('BROWSER_INVALID_SUBMIT_MODE', `unsupported WECHAT_BROWSER_SUBMIT_MODE: ${cfg.submitMode}`);
   }
 
   const taskId = payload.task_id || 'task';
-  const title = loginOnlyRequested ? '' : normalizeTitle(payload);
-  const content = loginOnlyRequested ? '' : normalizeContent(payload);
+  const title = normalizeTitle(payload);
+  const content = normalizeContent(payload);
 
   if (cfg.dryRun) {
     output({
@@ -622,24 +618,7 @@ async function main() {
 
     page = context.pages()[0] || await context.newPage();
     await page.goto('https://mp.weixin.qq.com/', { waitUntil: 'domcontentloaded' });
-    const sessionToken = await waitForLogin(page, cfg, { requireEditor: !loginOnlyRequested });
-
-    if (loginOnlyRequested) {
-      if (cfg.loginOnlyHoldMs > 0) {
-        await sleep(cfg.loginOnlyHoldMs);
-      }
-      output({
-        ok: true,
-        publish_url: page.url(),
-        message: 'wechat browser login success',
-        mode: 'login-only',
-        headless: effectiveHeadless,
-        session_token_present: Boolean(sessionToken),
-        task_id: taskId,
-        payload_path: payloadPath,
-      });
-      return;
-    }
+    const sessionToken = await waitForLogin(page, cfg, { requireEditor: true });
 
     await gotoEditor(page, cfg.editUrl, cfg, sessionToken);
 

@@ -36,7 +36,8 @@ node /Users/xujinsong/VSCode/SynologyDrive/wechat-official-account-mcp/scripts/b
 
 1. 安装 Playwright：`npm install -D playwright`
 2. 确保本机有 Chrome（默认 `WECHAT_BROWSER_CHANNEL=chrome`）
-3. 需先启动可被附着的 Chrome CDP 会话（推荐命令：`npm run agent:browser:login:confirm`）
+3. `npm run agent:start:prod` 会自动自检并启动 CDP（若 9222 未监听）
+4. 未登录时由 `/publish` 返回 `waiting_login`，再通过 login-session 接口取二维码完成扫码
 
 关键环境变量：
 
@@ -52,30 +53,17 @@ node /Users/xujinsong/VSCode/SynologyDrive/wechat-official-account-mcp/scripts/b
 10. `WECHAT_BROWSER_TYPE_DELAY_MAX_MS=120`
 11. `WECHAT_BROWSER_PUBLISH_LOGIN_TIMEOUT_MS=30000`（发布时若未登录，快速失败超时）
 12. `WECHAT_BROWSER_RETURN_LOGIN_QR=true|false`（未登录返回时是否附带二维码 PNG Base64）
-13. `WECHAT_BROWSER_LOGIN_ONLY_HOLD_MS=8000`（login-only 成功后保持窗口可见时长）
-14. `WECHAT_BROWSER_LOGIN_STABLE_ROUNDS=1`（登录校验连续成功次数）
-15. `WECHAT_BROWSER_IMAGE_MODE=skip|strict`（默认 `skip`：图片标签先剥离，先走纯文本正文）
-16. `WECHAT_BROWSER_VERBOSE=true`（输出登录轮询调试日志到 stderr）
+13. `WECHAT_BROWSER_LOGIN_STABLE_ROUNDS=1`（登录校验连续成功次数）
+14. `WECHAT_BROWSER_VERBOSE=true`（输出登录轮询调试日志到 stderr）
 
-## Manual Login Confirm (Recommended when auto login check is unstable)
+正文与封面规则（当前实现）：
 
-Run:
-
-```bash
-npm run agent:browser:login:confirm
-```
-
-Behavior:
-
-1. 启动或复用 Chrome（带 `--remote-debugging-port`，且使用 `WECHAT_BROWSER_USER_DATA_DIR`）
-2. You scan QR and confirm login manually
-3. In terminal, type `OK` to finish（Chrome 保持打开供发布附着）
-4. Then run publish command in next step
-
-Notes:
-
-1. 发布阶段会通过 CDP 连接已有 Chrome，不再重复新起独立浏览器会话。
-2. 若要彻底结束会话，手动关闭该 Chrome 窗口即可。
+1. 不再支持“删除正文图片”模式，正文 HTML 会按原样注入编辑器。
+2. 若正文含图片，发布器会尝试点击“从正文选择封面”并选第一张图作为封面（best effort）。
+3. 若正文无图，则不设置封面图，继续保存草稿流程。
+4. 封面选择结果会写入结构化字段：`cover_from_content_applied` / `cover_from_content_reason`。
+5. 微信编辑器若改写图片 URL（常见），不会判定为失败；仅当“实际图片数量 < 输入图片数量”才报 `BROWSER_IMAGE_INSERT_FAILED`。
+6. 若输入包含超链接而编辑器中链接数量减少，会返回 `BROWSER_LINK_INSERT_FAILED`。
 
 ## waiting_login 解耦调用
 
@@ -103,6 +91,12 @@ HTTP 接口：
 2. `*.png` 页面截图（不含浏览器地址栏）
 3. `*.html` 当前页面 HTML
 4. `*.meta.json`（包含 `page_url`、`page_title`、`main_frame_url`、`frame_urls`）
+
+快速验证（含图正文）：
+
+```bash
+npm run agent:publish:browser:image
+```
 
 ## mock 命令（仅联调）
 

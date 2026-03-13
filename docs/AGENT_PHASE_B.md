@@ -13,8 +13,13 @@
 ## 1. 启动本地 Agent
 
 ```bash
-npm run agent:start
+npm run agent:start:prod
 ```
+
+说明：
+
+- `agent:start:prod` 会先做构建，再自动检查/拉起 CDP（默认 `127.0.0.1:9222`），最后启动 Agent。
+- 正式链路不再使用本地 confirm-login 命令。
 
 > 生产建议通过 FRP 暴露 `remote:14273 -> 127.0.0.1:4273`。
 
@@ -125,13 +130,13 @@ npm run agent:publish:browser
 
 仓库内提供了真实自动发布命令（Playwright）：
 
-`scripts/browser-publisher/playwright-wechat-publish.mjs`
+`scripts/browser-publisher/playwright-cdp-wechat-publish.mjs`
 
 前置：
 
 1. `npm install -D playwright`
 2. `WECHAT_AGENT_BROWSER_PUBLISH_CMD` 指向上面的脚本
-3. 首次会打开公众号后台，扫码登录；登录态保存在 `WECHAT_BROWSER_USER_DATA_DIR`
+3. 未登录时 `/publish` 返回 `waiting_login`，通过 login-session 接口获取二维码扫码；登录态保存在 `WECHAT_BROWSER_USER_DATA_DIR`
 
 建议先设置：
 

@@ -1,0 +1,10 @@
+{
+  "task_id": "wx_browser_img_20260312_001",
+  "idempotency_key": "wx_browser_img_20260312_001_v1",
+  "title": "测试标题（Browser 通道，含图）",
+  "content": "<p>这是一段带图测试正文。</p><p><img src=\"https://mmbiz.qpic.cn/sz_mmbiz_png/5gWWxTGqVuKLgExrNZ3dJnhPPPedXeCceRtF7y8PKViaoUXBCfzhJeG9YYichuDxoArLvQmcbO3uVibCpog82CYtn9l0YQf8YlyMqyHa6VId9k/0?wx_fmt=png&from=appmsg\" /></p><p>图片后正文。</p>",
+  "review_approved": true,
+  "preferred_channel": "browser",
+  "author": "Agent-Team",
+  "digest": "测试摘要（含图）"
+}

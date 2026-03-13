@@ -27,7 +27,7 @@
 
 - 入口：`api/` + `scripts/agent-*` + `scripts/browser-publisher/*`
 - 典型用途：个人号/无官方发布权限时，走 Browser 通道完成“写入编辑器 -> 保存草稿”
-- 运行方式：`npm run agent:start` + `npm run agent:publish:browser`
+- 运行方式：`npm run agent:start:prod` + `npm run agent:publish:browser`
 
 ## 3. 端到端架构（当前实际落地）
 
@@ -86,8 +86,13 @@ cd /Users/xujinsong/VSCode/SynologyDrive/wechat-official-account-mcp
 npm install
 npm run build:prod
 cp .env.agent.example .env.agent
-npm run agent:start
+npm run agent:start:prod
 ```
+
+说明：
+
+- `agent:start:prod` 会在启动 Agent 前自动检查 CDP（`WECHAT_BROWSER_CDP_URL`，默认 `127.0.0.1:9222`）。
+- 若 CDP 未监听，会自动拉起 Chrome（使用 `WECHAT_BROWSER_USER_DATA_DIR`）。
 
 另开终端：
 
@@ -102,8 +107,8 @@ npm run agent:regression:browser
 如果触发登录态：
 
 - 接收 `waiting_login`
-- 展示二维码并人工扫码
-- 调用 confirm-login 或单次重试 `/publish`
+- 调用 `GET /agent/login-session/:sessionId` 或 `GET /agent/login-session/:sessionId/qr` 获取二维码
+- 人工扫码后，单次重试 `/publish`
 - 不建议轮询高频重试
 
 回归脚本说明：
