@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.5.0 (2026-03-15)
+
+### 新增
+
+- 新增 `agent:start:prod` 一体化启动器：构建后自动检查 CDP（默认 `127.0.0.1:9222`），未就绪时自动拉起 Chrome，再启动 Agent。
+- 新增浏览器发布内容规划模块 `content-plan`，统一处理链接规范化与正文图片/封面策略。
+- 新增“链接被清洗时自动补可见 URL 文本”回退机制，减少信息丢失。
+- 新增浏览器图片场景发布模板：`scripts/agent-templates/publish-browser-with-image.json`。
+
+### 变更
+
+- Browser 正式流程统一为：`/publish` -> `waiting_login` -> `login-session` 取二维码 -> 扫码后重试发布。
+- 移除本地 login-confirm / login-only MVP 流程与相关脚本、模板、环境变量。
+- 强化发布后校验与错误分类，继续保持正文非空校验、图片与链接校验的结构化输出。
+- Agent 审计日志补充 post-submit 链接降级与回退字段，便于排障。
+
+### 文档
+
+- 全面更新 Browser/Agent 使用文档，统一到 `agent:start:prod` 与 `waiting_login + login-session` 口径。
+- 新增 `RELEASE_NOTES_v2.5.0.md` 发布说明。
+
 ## v2.0.0 (2025-02-16)
 
 ### 重大更新 🎉

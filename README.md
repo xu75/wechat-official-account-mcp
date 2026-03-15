@@ -11,13 +11,13 @@
 > **[当前分支实现说明 (docs/CURRENT_IMPLEMENTATION.md)](./docs/CURRENT_IMPLEMENTATION.md)**。
 
 **作者**: xwang152-jack <xwang152@163.com>
-**更新日期**: 2025年02月16日
+**更新日期**: 2026年03月15日
 
 ## 🚀 项目概述
 
 本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供**完整**的微信公众号 API 集成。通过标准化的工具接口，AI 应用可以轻松管理微信公众号的用户、标签、菜单、素材、草稿、发布、消息、数据统计等**所有核心功能**。
 
-**当前版本**: `v2.0.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v1.1.0 Release Notes](./RELEASE_NOTES_v1.1.0.md)）
+**当前版本**: `v2.5.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v2.5.0 Release Notes](./RELEASE_NOTES_v2.5.0.md)）
 
 **重大更新**: 从 6 个工具扩展到 15 个工具，覆盖微信公众号 95% 的核心 API 功能！（详见 [功能总览](./FEATURES_OVERVIEW.md)）
 
