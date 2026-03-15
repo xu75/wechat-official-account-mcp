@@ -6,6 +6,19 @@
 
 v2.5.0 以“公众号发布执行链路可稳定运行”为目标，重点收敛在 Agent + Browser 正式流程，适配个人号/无官方发布权限场景。
 
+## 版本对应关系（Gateway）
+
+本版本建议与以下 Gateway 版本配套使用：
+
+- `openclaw-wechat-gateway v0.2.0-beta.1`（prerelease）
+- 发布链接：`https://github.com/xu75/openclaw-wechat-gateway/releases/tag/v0.2.0-beta.1`
+
+说明：
+
+- `wechat-official-account-mcp v2.5.0` 与 `openclaw-wechat-gateway v0.2.0-beta.1` 已完成联调基线对齐。
+- 关键对齐点：`waiting_login + login-session`、`agent:start:prod`、Browser 通道状态与错误码回传。
+- 若 Gateway 版本更早，可能缺少上述字段/流程，需按网关版本说明补齐适配。
+
 ## 主要更新
 
 1. 启动流程一体化
